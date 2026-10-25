@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmailServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">EmailServiceImpl.java</span></div><h1>EmailServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.exception.EmailSendException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EmailServiceImpl implements EmailService {
+
+<span class="fc" id="L15">    private static final Logger log = LoggerFactory.getLogger(EmailServiceImpl.class);</span>
+
+    private final JavaMailSender javaMailSender;
+    private final String frontendBaseUrl;
+    private final int tokenExpirationMinutes;
+
+    public EmailServiceImpl(
+            JavaMailSender javaMailSender,
+            @Value(&quot;${password-reset.frontend-base-url}&quot;) String frontendBaseUrl,
+<span class="fc" id="L24">            @Value(&quot;${password-reset.token-expiration-minutes}&quot;) int tokenExpirationMinutes) {</span>
+<span class="fc" id="L25">        this.javaMailSender = javaMailSender;</span>
+<span class="fc" id="L26">        this.frontendBaseUrl = stripTrailingSlash(frontendBaseUrl);</span>
+<span class="fc" id="L27">        this.tokenExpirationMinutes = tokenExpirationMinutes;</span>
+<span class="fc" id="L28">    }</span>
+
+    @Override
+    public void sendPasswordResetEmail(String toEmail, String rawToken) {
+        try {
+<span class="fc" id="L33">            SimpleMailMessage message = new SimpleMailMessage();</span>
+<span class="fc" id="L34">            message.setTo(toEmail);</span>
+<span class="fc" id="L35">            message.setSubject(&quot;OneCare - Reset your password&quot;);</span>
+<span class="fc" id="L36">            message.setText(buildBody(rawToken));</span>
+<span class="fc" id="L37">            javaMailSender.send(message);</span>
+<span class="fc" id="L38">            log.info(&quot;Password reset email sent | to={}&quot;, toEmail);</span>
+<span class="fc" id="L39">        } catch (MailException e) {</span>
+<span class="fc" id="L40">            log.error(&quot;Failed to send password reset email | to={}&quot;, toEmail, e);</span>
+<span class="fc" id="L41">            throw new EmailSendException(&quot;Failed to send password reset email&quot;, e);</span>
+<span class="fc" id="L42">        }</span>
+<span class="fc" id="L43">    }</span>
+
+    private String buildBody(String rawToken) {
+<span class="fc" id="L46">        String resetLink = frontendBaseUrl + &quot;/reset-password?token=&quot; + rawToken;</span>
+<span class="fc" id="L47">        return &quot;&quot;&quot;</span>
+                You requested a password reset.
+
+                Click the following link to reset your password:
+
+                %s
+
+                This link expires in %d minutes.
+
+                If you did not request this, you can ignore this email.
+<span class="fc" id="L57">                &quot;&quot;&quot;.formatted(resetLink, tokenExpirationMinutes);</span>
+    }
+
+    private static String stripTrailingSlash(String url) {
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (url != null &amp;&amp; url.endsWith(&quot;/&quot;)) {</span>
+<span class="fc" id="L62">            return url.substring(0, url.length() - 1);</span>
+        }
+<span class="fc" id="L64">        return url;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

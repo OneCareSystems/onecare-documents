@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublicRateLimitInterceptor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.ratelimit</a> &gt; <span class="el_source">PublicRateLimitInterceptor.java</span></div><h1>PublicRateLimitInterceptor.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.ratelimit;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+import com.onecare.backend.chatbot.exception.RateLimitExceededException;
+
+public class PublicRateLimitInterceptor implements HandlerInterceptor {
+    private final SlidingWindowRateLimiter limiter;
+    private final ClientIpResolver resolver;
+    private final int maxBodyBytes;
+
+<span class="fc" id="L15">    public PublicRateLimitInterceptor(SlidingWindowRateLimiter limiter, ClientIpResolver resolver, int maxBodyBytes) {</span>
+<span class="fc" id="L16">        this.limiter = limiter;</span>
+<span class="fc" id="L17">        this.resolver = resolver;</span>
+<span class="fc" id="L18">        this.maxBodyBytes = maxBodyBytes;</span>
+<span class="fc" id="L19">    }</span>
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+<span class="fc" id="L23">        String client = resolver.resolve(request.getRemoteAddr(), request.getHeader(&quot;X-Forwarded-For&quot;));</span>
+<span class="fc" id="L24">        SlidingWindowRateLimiter.Decision decision = limiter.tryAcquire(ClientIpResolver.rateLimitKey(client));</span>
+<span class="fc" id="L25">        response.setHeader(&quot;X-RateLimit-Limit&quot;, String.valueOf(decision.limit()));</span>
+<span class="fc" id="L26">        response.setHeader(&quot;X-RateLimit-Remaining&quot;, String.valueOf(decision.remaining()));</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (!decision.allowed()) throw new RateLimitExceededException(decision.retryAfterSeconds());</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        if (request.getContentLengthLong() &gt; maxBodyBytes) throw new InvalidInputException(&quot;The request is too large.&quot;);</span>
+<span class="fc" id="L29">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

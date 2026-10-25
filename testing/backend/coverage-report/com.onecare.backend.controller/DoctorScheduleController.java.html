@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoctorScheduleController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">DoctorScheduleController.java</span></div><h1>DoctorScheduleController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.DoctorScheduleRequest;
+import com.onecare.backend.dto.response.DoctorScheduleResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.DoctorScheduleService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@Tag(name = &quot;Doctor Schedule&quot;, description = &quot;Clinic configuration: doctor working days &amp; time slots (FR009, UC4)&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/doctors/{doctorId}/schedule&quot;)
+public class DoctorScheduleController {
+
+    private final DoctorScheduleService doctorScheduleService;
+
+<span class="fc" id="L28">    public DoctorScheduleController(DoctorScheduleService doctorScheduleService) {</span>
+<span class="fc" id="L29">        this.doctorScheduleService = doctorScheduleService;</span>
+<span class="fc" id="L30">    }</span>
+
+    @Operation(summary = &quot;Get a doctor's schedule&quot;,
+            description = &quot;Returns the configured working days and time slots. &quot;
+                    + &quot;Admins may read any doctor's schedule, a doctor only their own. &quot;
+                    + &quot;Empty lists when no schedule has been configured.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Schedule retrieved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the owning doctor and missing SCHEDULE_READ&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Doctor not found&quot;)
+    })
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SCHEDULE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;DoctorScheduleResponse&gt;&gt; getSchedule(@PathVariable Long doctorId) {
+<span class="fc" id="L44">        DoctorScheduleResponse response = doctorScheduleService.getSchedule(doctorId);</span>
+<span class="fc" id="L45">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Schedule retrieved successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Replace a doctor's schedule&quot;,
+            description = &quot;Replaces the full weekly schedule (working days + time slots). &quot;
+                    + &quot;Overlapping slots are rejected with 400 \&quot;Time slot conflict\&quot; and the &quot;
+                    + &quot;conflicting ranges in data.conflictingSlots (UC4 alt flow). &quot;
+                    + &quot;Requires SCHEDULE_MANAGE (Super Admin).&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Schedule saved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation error or time slot conflict&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SCHEDULE_MANAGE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Doctor not found&quot;)
+    })
+    @PutMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SCHEDULE_MANAGE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;DoctorScheduleResponse&gt;&gt; updateSchedule(
+            @PathVariable Long doctorId,
+            @Valid @RequestBody DoctorScheduleRequest request) {
+<span class="fc" id="L64">        DoctorScheduleResponse response = doctorScheduleService.saveSchedule(doctorId, request);</span>
+<span class="fc" id="L65">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Schedule saved successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Replace a doctor's schedule (POST alias)&quot;,
+            description = &quot;Same as PUT — creates or replaces the doctor's schedule. &quot;
+                    + &quot;Overlapping slots are rejected with 400 \&quot;Time slot conflict\&quot;.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;, description = &quot;Schedule saved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation error or time slot conflict&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SCHEDULE_MANAGE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Doctor not found&quot;)
+    })
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SCHEDULE_MANAGE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;DoctorScheduleResponse&gt;&gt; createSchedule(
+            @PathVariable Long doctorId,
+            @Valid @RequestBody DoctorScheduleRequest request) {
+<span class="nc" id="L82">        DoctorScheduleResponse response = doctorScheduleService.saveSchedule(doctorId, request);</span>
+<span class="nc" id="L83">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="nc" id="L84">                .body(new ApiResponse&lt;&gt;(true, &quot;Schedule saved successfully&quot;, response));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

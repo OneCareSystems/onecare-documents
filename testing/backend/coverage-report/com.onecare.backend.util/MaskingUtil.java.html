@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaskingUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.util</a> &gt; <span class="el_source">MaskingUtil.java</span></div><h1>MaskingUtil.java</h1><pre class="source lang-java linenums">package com.onecare.backend.util;
+
+/**
+ * Deterministic partial masking of sensitive contact / ID values shown in or
+ * exported from reports (SDS section 2.5.3).
+ *
+ * &lt;p&gt;The same input always produces the same masked output, so the on-screen
+ * report and the CSV/PDF export of that report match exactly (AC5) while never
+ * exposing the full value (AC6).&lt;/p&gt;
+ */
+public final class MaskingUtil {
+
+    /** Digits kept visible at the end of a masked value. */
+    private static final int VISIBLE_SUFFIX = 2;
+
+    /** Minimum length before which the whole value is starred out. */
+    private static final int MIN_VISIBLE_LENGTH = 5;
+
+    private MaskingUtil() {
+    }
+
+    /**
+     * Masks a contact number, keeping the international prefix (or first local
+     * digit) and the last two digits: {@code +94771234567} becomes
+     * {@code +94*******67}, {@code 0771234567} becomes {@code 0******567}.
+     * Null and blank values are returned unchanged.
+     */
+    public static String maskContactNo(String contactNo) {
+<span class="fc bfc" id="L29" title="All 4 branches covered.">        if (contactNo == null || contactNo.isBlank()) {</span>
+<span class="fc" id="L30">            return contactNo;</span>
+        }
+<span class="fc" id="L32">        String trimmed = contactNo.trim();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        String prefix = trimmed.startsWith(&quot;+&quot;) ? trimmed.substring(0, 3) : trimmed.substring(0, 1);</span>
+<span class="fc" id="L34">        return mask(trimmed, prefix);</span>
+    }
+
+    /**
+     * Masks an ID/document number, keeping the first two and last two
+     * characters: {@code 199912345678} becomes {@code 19********78}.
+     * Null and blank values are returned unchanged.
+     */
+    public static String maskIdNumber(String idNumber) {
+<span class="fc bfc" id="L43" title="All 4 branches covered.">        if (idNumber == null || idNumber.isBlank()) {</span>
+<span class="fc" id="L44">            return idNumber;</span>
+        }
+<span class="fc" id="L46">        String trimmed = idNumber.trim();</span>
+<span class="fc" id="L47">        String prefix = trimmed.substring(0, Math.min(2, trimmed.length()));</span>
+<span class="fc" id="L48">        return mask(trimmed, prefix);</span>
+    }
+
+    private static String mask(String value, String visiblePrefix) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (value.length() &lt; MIN_VISIBLE_LENGTH) {</span>
+<span class="fc" id="L53">            return &quot;*&quot;.repeat(value.length());</span>
+        }
+<span class="fc" id="L55">        String suffix = value.substring(value.length() - VISIBLE_SUFFIX);</span>
+<span class="fc" id="L56">        int maskedCount = value.length() - visiblePrefix.length() - VISIBLE_SUFFIX;</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (maskedCount &lt;= 0) {</span>
+<span class="nc" id="L58">            return &quot;*&quot;.repeat(value.length());</span>
+        }
+<span class="fc" id="L60">        return visiblePrefix + &quot;*&quot;.repeat(maskedCount) + suffix;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

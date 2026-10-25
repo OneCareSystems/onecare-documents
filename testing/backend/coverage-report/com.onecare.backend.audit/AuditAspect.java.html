@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditAspect.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.audit</a> &gt; <span class="el_source">AuditAspect.java</span></div><h1>AuditAspect.java</h1><pre class="source lang-java linenums">package com.onecare.backend.audit;
+
+import com.onecare.backend.entity.User;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.ClientIpResolver;
+import com.onecare.backend.security.JwtService;
+import com.onecare.backend.security.SecurityUtil;
+import com.onecare.backend.service.AuditService;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Map;
+
+/**
+ * Writes exactly one audit record per {@link Audited} method invocation (FR041):
+ * outcome {@code SUCCESS} on normal return, action type suffixed with
+ * {@code _FAILED} when the method throws (the exception is rethrown unchanged).
+ *
+ * &lt;p&gt;Ordered just after {@code ExposeInvocationInterceptor}
+ * ({@code HIGHEST_PRECEDENCE + 1}, required for {@code @annotation} binding)
+ * and before the transaction interceptor, so the entry is recorded after the
+ * business transaction completes and authorisation failures are captured too.
+ *
+ * &lt;p&gt;Never serializes argument values into the description - only method
+ * identity and outcome - so passwords/JWTs/reset tokens cannot leak (NFRS-006).
+ * {@link AuditSanitizer} provides a second line of defence on the text.
+ */
+@Aspect
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@Component
+public class AuditAspect {
+
+<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(AuditAspect.class);</span>
+
+    private final AuditService auditService;
+    private final UserRepository userRepository;
+    private final JwtService jwtService;
+
+<span class="fc" id="L50">    public AuditAspect(AuditService auditService, UserRepository userRepository, JwtService jwtService) {</span>
+<span class="fc" id="L51">        this.auditService = auditService;</span>
+<span class="fc" id="L52">        this.userRepository = userRepository;</span>
+<span class="fc" id="L53">        this.jwtService = jwtService;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Around(&quot;@annotation(audited)&quot;)
+    public Object auditMethod(ProceedingJoinPoint joinPoint, Audited audited) throws Throwable {
+<span class="fc" id="L58">        boolean success = false;</span>
+<span class="fc" id="L59">        Throwable failure = null;</span>
+<span class="fc" id="L60">        Object result = null;</span>
+        try {
+<span class="fc" id="L62">            result = joinPoint.proceed();</span>
+<span class="fc" id="L63">            success = true;</span>
+<span class="fc" id="L64">            return result;</span>
+<span class="fc" id="L65">        } catch (Throwable ex) {</span>
+<span class="fc" id="L66">            failure = ex;</span>
+<span class="fc" id="L67">            throw ex;</span>
+        } finally {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            record(audited, joinPoint, success ? &quot;SUCCESS&quot; : &quot;FAILURE&quot;, result, failure);</span>
+        }
+    }
+
+    private void record(Audited audited, ProceedingJoinPoint joinPoint, String outcome,
+                        Object result, Throwable failure) {
+        try {
+<span class="fc" id="L76">            MethodSignature signature = (MethodSignature) joinPoint.getSignature();</span>
+<span class="fc" id="L77">            Method method = signature.getMethod();</span>
+<span class="fc" id="L78">            Object[] args = joinPoint.getArgs();</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            String actionType = &quot;SUCCESS&quot;.equals(outcome) ? audited.action() : audited.action() + &quot;_FAILED&quot;;</span>
+
+<span class="fc" id="L82">            StringBuilder description = new StringBuilder()</span>
+<span class="fc" id="L83">                    .append(audited.action()).append(&quot; outcome=&quot;).append(outcome)</span>
+<span class="fc" id="L84">                    .append(&quot; target=&quot;).append(method.getDeclaringClass().getSimpleName())</span>
+<span class="fc" id="L85">                    .append('.').append(method.getName());</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (failure != null) {</span>
+<span class="fc" id="L87">                description.append(&quot; error=&quot;).append(failure.getClass().getSimpleName());</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                if (failure.getMessage() != null) {</span>
+<span class="fc" id="L89">                    description.append(&quot;: &quot;).append(failure.getMessage());</span>
+                }
+            }
+
+<span class="fc" id="L93">            auditService.record(</span>
+<span class="fc" id="L94">                    resolveActor(method, args),</span>
+                    actionType,
+<span class="fc" id="L96">                    audited.module(),</span>
+<span class="fc" id="L97">                    resolveEntityId(audited, method, args, result),</span>
+<span class="fc" id="L98">                    description.toString(),</span>
+<span class="fc" id="L99">                    ClientIpResolver.resolveCurrentRequest());</span>
+<span class="nc" id="L100">        } catch (Exception ex) {</span>
+<span class="nc" id="L101">            log.error(&quot;Audit aspect failed | action={} | module={}&quot;, audited.action(), audited.module(), ex);</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Actor of the audited action: the authenticated principal, or - for
+     * pre-authentication flows such as login/refresh - the identity carried by
+     * the arguments (username/email parameter, username accessor, or JWT
+     * subject). The token itself is only used for the lookup, never recorded.
+     */
+    private User resolveActor(Method method, Object[] args) {
+<span class="fc" id="L112">        Long userId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (userId != null) {</span>
+<span class="fc" id="L114">            return userRepository.findById(userId).orElse(null);</span>
+        }
+<span class="fc" id="L116">        String identity = findIdentity(method, args);</span>
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">        if (identity == null || identity.isBlank()) {</span>
+<span class="fc" id="L118">            return null;</span>
+        }
+<span class="fc" id="L120">        String candidate = identity;</span>
+<span class="fc" id="L121">        return userRepository.findByUsername(candidate)</span>
+<span class="fc" id="L122">                .or(() -&gt; userRepository.findByEmail(candidate))</span>
+<span class="fc" id="L123">                .orElse(null);</span>
+    }
+
+    private String findIdentity(Method method, Object[] args) {
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">        if (args == null || args.length == 0) {</span>
+<span class="nc" id="L128">            return null;</span>
+        }
+<span class="fc" id="L130">        Parameter[] parameters = method.getParameters();</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">        for (int i = 0; i &lt; parameters.length &amp;&amp; i &lt; args.length; i++) {</span>
+<span class="fc" id="L132">            String name = parameters[i].getName().toLowerCase();</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">            if (args[i] instanceof String value &amp;&amp; !value.isBlank()</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">                    &amp;&amp; (&quot;username&quot;.equals(name) || &quot;email&quot;.equals(name))) {</span>
+<span class="fc" id="L135">                return value;</span>
+            }
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (Object arg : args) {</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (arg == null) {</span>
+<span class="fc" id="L140">                continue;</span>
+            }
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            for (String accessor : new String[]{&quot;username&quot;, &quot;email&quot;}) {</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">                if (invokeNoArgGetter(arg, accessor) instanceof String candidate &amp;&amp; !candidate.isBlank()) {</span>
+<span class="fc" id="L144">                    return candidate;</span>
+                }
+            }
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            for (String accessor : new String[]{&quot;refreshToken&quot;, &quot;token&quot;}) {</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">                if (invokeNoArgGetter(arg, accessor) instanceof String token &amp;&amp; !token.isBlank()) {</span>
+<span class="fc" id="L149">                    String username = extractUsernameQuietly(token);</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                    if (username != null) {</span>
+<span class="fc" id="L151">                        return username;</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L156">        return null;</span>
+    }
+
+    private String extractUsernameQuietly(String token) {
+        try {
+<span class="fc" id="L161">            return jwtService.extractUsername(token);</span>
+<span class="nc" id="L162">        } catch (Exception ex) {</span>
+<span class="nc" id="L163">            return null;</span>
+        }
+    }
+
+    private String resolveEntityId(Audited audited, Method method, Object[] args, Object result) {
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">        if (!audited.entityIdParameter().isEmpty() &amp;&amp; args != null) {</span>
+<span class="fc" id="L169">            Parameter[] parameters = method.getParameters();</span>
+<span class="pc bpc" id="L170" title="2 of 4 branches missed.">            for (int i = 0; i &lt; parameters.length &amp;&amp; i &lt; args.length; i++) {</span>
+<span class="pc bpc" id="L171" title="2 of 4 branches missed.">                if (parameters[i].getName().equals(audited.entityIdParameter()) &amp;&amp; args[i] instanceof Number id) {</span>
+<span class="fc" id="L172">                    return id.toString();</span>
+                }
+            }
+        }
+<span class="fc" id="L176">        String fromResult = idFrom(result);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (fromResult != null) {</span>
+<span class="fc" id="L178">            return fromResult;</span>
+        }
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        if (args != null) {</span>
+<span class="fc" id="L181">            Parameter[] parameters = method.getParameters();</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">            for (int i = 0; i &lt; parameters.length &amp;&amp; i &lt; args.length; i++) {</span>
+<span class="fc" id="L183">                Object arg = args[i];</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                if (arg instanceof Number number) {</span>
+<span class="fc" id="L185">                    String name = parameters[i].getName().toLowerCase();</span>
+<span class="pc bpc" id="L186" title="1 of 4 branches missed.">                    if (&quot;id&quot;.equals(name) || name.endsWith(&quot;id&quot;)) {</span>
+<span class="fc" id="L187">                        return String.valueOf(number);</span>
+                    }
+                }
+            }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            for (Object arg : args) {</span>
+<span class="fc" id="L192">                String id = idFrom(arg);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                if (id != null) {</span>
+<span class="fc" id="L194">                    return id;</span>
+                }
+            }
+        }
+<span class="fc" id="L198">        return null;</span>
+    }
+
+    /**
+     * Reads an entity identifier from an object without touching anything
+     * secret-shaped: only zero-arg accessors ending in {@code Id}
+     * ({@code getPatientId()}, {@code patientId()}) are considered.
+     */
+    private String idFrom(Object target) {
+<span class="pc bpc" id="L207" title="5 of 16 branches missed.">        if (target == null || target instanceof String || target instanceof Number</span>
+                || target instanceof Boolean || target instanceof Date || target instanceof Enum&lt;?&gt;
+                || target instanceof Collection&lt;?&gt; || target instanceof Map&lt;?, ?&gt;) {
+<span class="fc" id="L210">            return null;</span>
+        }
+        Method[] methods;
+        try {
+<span class="fc" id="L214">            methods = target.getClass().getMethods();</span>
+<span class="nc" id="L215">        } catch (Exception ex) {</span>
+<span class="nc" id="L216">            return null;</span>
+<span class="fc" id="L217">        }</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        for (Method method : methods) {</span>
+<span class="fc" id="L219">            String name = method.getName();</span>
+<span class="fc bfc" id="L220" title="All 4 branches covered.">            if (method.getParameterCount() != 0 || method.getReturnType() == void.class</span>
+<span class="fc bfc" id="L221" title="All 4 branches covered.">                    || &quot;getClass&quot;.equals(name) || !isIdAccessor(name)) {</span>
+<span class="fc" id="L222">                continue;</span>
+            }
+<span class="fc" id="L224">            Object value = invokeNoArgGetter(target, name, method);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L226">                return String.valueOf(value);</span>
+            }
+        }
+<span class="fc" id="L229">        return null;</span>
+    }
+
+    private boolean isIdAccessor(String name) {
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (&quot;id&quot;.equalsIgnoreCase(name)) {</span>
+<span class="nc" id="L234">            return true;</span>
+        }
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">        return name.length() &gt; 2 &amp;&amp; name.endsWith(&quot;Id&quot;);</span>
+    }
+
+    private Object invokeNoArgGetter(Object target, String propertyName) {
+        Method method;
+        try {
+<span class="fc" id="L242">            method = target.getClass().getMethod(propertyName);</span>
+<span class="fc" id="L243">        } catch (NoSuchMethodException ex) {</span>
+<span class="fc" id="L244">            return null;</span>
+<span class="fc" id="L245">        }</span>
+<span class="fc" id="L246">        return invokeNoArgGetter(target, propertyName, method);</span>
+    }
+
+    private Object invokeNoArgGetter(Object target, String propertyName, Method method) {
+        try {
+<span class="fc" id="L251">            return method.invoke(target);</span>
+<span class="nc" id="L252">        } catch (Exception | LinkageError ex) {</span>
+<span class="nc" id="L253">            log.debug(&quot;Could not read audit value | property={} | type={}&quot;,</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                    propertyName != null ? propertyName : method.getName(), target.getClass().getSimpleName());</span>
+<span class="nc" id="L255">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

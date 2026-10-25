@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.security</a> &gt; <span class="el_source">SecurityUtil.java</span></div><h1>SecurityUtil.java</h1><pre class="source lang-java linenums">package com.onecare.backend.security;
+
+import com.onecare.backend.enums.Role;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Arrays;
+import java.util.Optional;
+
+public final class SecurityUtil {
+
+    private SecurityUtil() {
+        // Utility class
+    }
+
+    // Get the current Spring Security authentication.
+    public static Optional&lt;Authentication&gt; getAuthentication() {
+<span class="fc" id="L19">        return Optional.ofNullable(</span>
+<span class="fc" id="L20">                SecurityContextHolder.getContext().getAuthentication()</span>
+        );
+    }
+
+    // Get the current authenticated principal as UserDetails.
+    public static Optional&lt;UserDetails&gt; getPrincipal() {
+<span class="fc" id="L26">        return getAuthentication()</span>
+<span class="fc" id="L27">                .map(Authentication::getPrincipal)</span>
+<span class="fc" id="L28">                .filter(UserDetails.class::isInstance)</span>
+<span class="fc" id="L29">                .map(UserDetails.class::cast);</span>
+    }
+
+    //Get the current authenticated user's ID.
+    public static Optional&lt;Long&gt; getCurrentUserId() {
+<span class="fc" id="L34">        return getPrincipal()</span>
+<span class="fc" id="L35">                .filter(AppUserDetailsService.AppUserDetails.class::isInstance)</span>
+<span class="fc" id="L36">                .map(AppUserDetailsService.AppUserDetails.class::cast)</span>
+<span class="fc" id="L37">                .map(AppUserDetailsService.AppUserDetails::getUserId);</span>
+    }
+
+    // Get the current authenticated user's username.
+    public static Optional&lt;String&gt; getCurrentUsername() {
+<span class="fc" id="L42">        return getPrincipal()</span>
+<span class="fc" id="L43">                .map(UserDetails::getUsername);</span>
+    }
+
+    // Get the current authenticated user's role.
+    public static Optional&lt;Role&gt; getCurrentUserRole() {
+<span class="nc" id="L48">        return getAuthentication()</span>
+<span class="nc" id="L49">                .flatMap(authentication -&gt;</span>
+<span class="nc" id="L50">                        authentication.getAuthorities().stream()</span>
+<span class="nc" id="L51">                                .map(authority -&gt; authority.getAuthority())</span>
+<span class="nc" id="L52">                                .filter(authority -&gt; authority.startsWith(&quot;ROLE_&quot;))</span>
+<span class="nc" id="L53">                                .map(authority -&gt; authority.substring(5))</span>
+<span class="nc" id="L54">                                .map(SecurityUtil::toRole)</span>
+<span class="nc" id="L55">                                .filter(Optional::isPresent)</span>
+<span class="nc" id="L56">                                .map(Optional::get)</span>
+<span class="nc" id="L57">                                .findFirst()</span>
+                );
+    }
+
+    /**
+     * Check whether the current user has the specified role.
+     *
+     * Example:
+     * SecurityUtil.hasRole(&quot;ADMIN&quot;)
+     */
+    public static boolean hasRole(String role) {
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (role == null || role.isBlank()) {</span>
+<span class="nc" id="L69">            return false;</span>
+        }
+
+<span class="fc" id="L72">        String requiredAuthority = &quot;ROLE_&quot; + role;</span>
+
+<span class="fc" id="L74">        return getAuthentication()</span>
+<span class="fc" id="L75">                .map(authentication -&gt;</span>
+<span class="fc" id="L76">                        authentication.getAuthorities().stream()</span>
+<span class="fc" id="L77">                                .anyMatch(authority -&gt;</span>
+<span class="fc" id="L78">                                        requiredAuthority.equals(</span>
+<span class="fc" id="L79">                                                authority.getAuthority()</span>
+                                        )
+                                )
+                )
+<span class="fc" id="L83">                .orElse(false);</span>
+    }
+
+    /**
+     * Check whether the current user has at least one
+     * of the specified roles.
+     *
+     * Example:
+     * SecurityUtil.hasAnyRole(&quot;ADMIN&quot;, &quot;SUPER_ADMIN&quot;)
+     */
+    public static boolean hasAnyRole(String... roles) {
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">        if (roles == null || roles.length == 0) {</span>
+<span class="nc" id="L95">            return false;</span>
+        }
+
+<span class="fc" id="L98">        return getAuthentication()</span>
+<span class="fc" id="L99">                .map(authentication -&gt;</span>
+<span class="fc" id="L100">                        authentication.getAuthorities().stream()</span>
+<span class="fc" id="L101">                                .map(authority -&gt; authority.getAuthority())</span>
+<span class="fc" id="L102">                                .anyMatch(authority -&gt;</span>
+<span class="fc" id="L103">                                        Arrays.stream(roles)</span>
+<span class="fc" id="L104">                                                .filter(role -&gt;</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                                                        role != null</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                                                                &amp;&amp; !role.isBlank()</span>
+                                                )
+<span class="fc" id="L108">                                                .anyMatch(role -&gt;</span>
+<span class="fc" id="L109">                                                        authority.equals(</span>
+                                                                &quot;ROLE_&quot; + role
+                                                        )
+                                                )
+                                )
+                )
+<span class="fc" id="L115">                .orElse(false);</span>
+    }
+
+    /**
+     * Check whether the current user has the specified permission.
+     *
+     * Example:
+     * SecurityUtil.hasPermission(Permission.USER_CREATE)
+     */
+    public static boolean hasPermission(String permission) {
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">        if (permission == null || permission.isBlank()) {</span>
+<span class="nc" id="L126">            return false;</span>
+        }
+
+<span class="fc" id="L129">        return getAuthentication()</span>
+<span class="fc" id="L130">                .map(authentication -&gt;</span>
+<span class="fc" id="L131">                        authentication.getAuthorities().stream()</span>
+<span class="fc" id="L132">                                .anyMatch(authority -&gt;</span>
+<span class="fc" id="L133">                                        permission.equals(</span>
+<span class="fc" id="L134">                                                authority.getAuthority()</span>
+                                        )
+                                )
+                )
+<span class="fc" id="L138">                .orElse(false);</span>
+    }
+
+    /**
+     * Check whether the current user has at least one
+     * of the specified permissions.
+     *
+     * Example:
+     * SecurityUtil.hasAnyPermission(
+     *     Permission.USER_CREATE,
+     *     Permission.USER_UPDATE
+     * )
+     */
+    public static boolean hasAnyPermission(String... permissions) {
+<span class="nc bnc" id="L152" title="All 4 branches missed.">        if (permissions == null || permissions.length == 0) {</span>
+<span class="nc" id="L153">            return false;</span>
+        }
+
+<span class="nc" id="L156">        return getAuthentication()</span>
+<span class="nc" id="L157">                .map(authentication -&gt;</span>
+<span class="nc" id="L158">                        authentication.getAuthorities().stream()</span>
+<span class="nc" id="L159">                                .map(authority -&gt; authority.getAuthority())</span>
+<span class="nc" id="L160">                                .anyMatch(authority -&gt;</span>
+<span class="nc" id="L161">                                        Arrays.stream(permissions)</span>
+<span class="nc" id="L162">                                                .anyMatch(authority::equals)</span>
+                                )
+                )
+<span class="nc" id="L165">                .orElse(false);</span>
+    }
+
+    // Check whether the current user is a SUPER_ADMIN.
+    public static boolean isSuperAdmin() {
+<span class="nc" id="L170">        return hasRole(&quot;SUPER_ADMIN&quot;);</span>
+    }
+
+    // Check whether the current user is an ADMIN.
+    public static boolean isAdmin() {
+<span class="nc" id="L175">        return hasRole(&quot;ADMIN&quot;);</span>
+    }
+
+    // Check whether the current user is a DOCTOR.
+    public static boolean isDoctor() {
+<span class="fc" id="L180">        return hasRole(&quot;DOCTOR&quot;);</span>
+    }
+
+    // Check whether the current user is a PHARMACIST.
+    public static boolean isPharmacist() {
+<span class="nc" id="L185">        return hasRole(&quot;PHARMACIST&quot;);</span>
+    }
+
+    // Check whether a user is authenticated with a real application principal.
+
+    public static boolean isAuthenticated() {
+<span class="nc" id="L191">        return getAuthentication()</span>
+<span class="nc" id="L192">                .filter(Authentication::isAuthenticated)</span>
+<span class="nc" id="L193">                .map(Authentication::getPrincipal)</span>
+<span class="nc" id="L194">                .filter(principal -&gt;</span>
+<span class="nc" id="L195">                        !(principal instanceof String stringPrincipal)</span>
+<span class="nc bnc" id="L196" title="All 4 branches missed.">                                || !&quot;anonymousUser&quot;.equals(stringPrincipal)</span>
+                )
+<span class="nc" id="L198">                .isPresent();</span>
+    }
+
+    // Convert a String to Role safely.
+    private static Optional&lt;Role&gt; toRole(String roleName) {
+<span class="nc bnc" id="L203" title="All 4 branches missed.">        if (roleName == null || roleName.isBlank()) {</span>
+<span class="nc" id="L204">            return Optional.empty();</span>
+        }
+
+        try {
+<span class="nc" id="L208">            return Optional.of(Role.valueOf(roleName));</span>
+<span class="nc" id="L209">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L210">            return Optional.empty();</span>
+        }
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

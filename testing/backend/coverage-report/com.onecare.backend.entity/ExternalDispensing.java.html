@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalDispensing.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.entity</a> &gt; <span class="el_source">ExternalDispensing.java</span></div><h1>ExternalDispensing.java</h1><pre class="source lang-java linenums">package com.onecare.backend.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import com.onecare.backend.enums.DeliveryMethod;
+import com.onecare.backend.enums.Status;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = &quot;external_dispensing&quot;)
+public class ExternalDispensing {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column( name=&quot;dispense_id&quot;)
+    private Long dispenseId;
+
+    @ManyToOne
+    @JoinColumn(name=&quot;prescription_id&quot;)                      // NULL: OTC / no prescription sheet
+    private Prescription  prescription;
+
+    /** Medicines handed over in this event; empty for a whole-prescription handover. */
+    @OneToMany(mappedBy = &quot;dispensing&quot;, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List&lt;DispensingItem&gt; items = new ArrayList&lt;&gt;();
+
+    /** Attaches a handed-over medicine to this event (both sides of the link). */
+    public void addItem(DispensingItem item) {
+<span class="fc" id="L35">        item.setDispensing(this);</span>
+<span class="fc" id="L36">        items.add(item);</span>
+<span class="fc" id="L37">    }</span>
+
+    @Column(name = &quot;verification_method&quot;, nullable = false, length = 100)
+    private String verificationMethod;
+
+    @Column(name = &quot;verification_status&quot;, nullable = false, length = 30)
+    private String verificationStatus = &quot;PENDING&quot;;
+
+    @Column(name = &quot;verified_at&quot;)
+    private LocalDateTime verifiedAt;
+
+    @Column(name = &quot;retry_count&quot;, nullable = false)
+    private Integer retryCount = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;audit_log_id&quot;)
+    private AuditLog auditLog;
+
+   @Column(name = &quot;dispensed_at&quot;, nullable = false)
+    private LocalDateTime dispensedAt;
+
+   @Column(name = &quot;patient_id&quot;, nullable = true, length = 10)
+     private Long patientId;
+
+   @Column(name = &quot;dispense_date&quot;, nullable = false)
+     private LocalDateTime dispenseDate;
+
+   @Enumerated(EnumType.STRING)
+     @Column(name = &quot;status&quot;, nullable = false)
+     private Status status;
+
+   @Enumerated(EnumType.STRING)
+      @Column(name = &quot;delivery_method&quot;, nullable = false)
+      private DeliveryMethod deliveryMethod;
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

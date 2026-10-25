@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemSettingServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">SystemSettingServiceImpl.java</span></div><h1>SystemSettingServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.dto.request.UpdateBackupScheduleRequest;
+import com.onecare.backend.dto.request.UpdateConsultationFeeRequest;
+import com.onecare.backend.dto.response.BackupScheduleResponse;
+import com.onecare.backend.dto.response.ConsultationFeeResponse;
+import com.onecare.backend.entity.AuditLog;
+import com.onecare.backend.entity.SystemSetting;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.repository.AuditLogRepository;
+import com.onecare.backend.repository.SystemSettingRepository;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+@Service
+@Transactional
+public class SystemSettingServiceImpl implements SystemSettingService {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(SystemSettingServiceImpl.class);</span>
+
+    /** Used when no BACKUP_SCHEDULE_DAY_OF_MONTH row exists yet. */
+    static final int DEFAULT_BACKUP_SCHEDULE_DAY_OF_MONTH = 28;
+
+    private static final int MONEY_SCALE = 2;
+<span class="fc" id="L36">    private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;</span>
+
+    private final SystemSettingRepository systemSettingRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final UserRepository userRepository;
+    private final BigDecimal defaultConsultationFee;
+    private final String executionTime;
+
+    public SystemSettingServiceImpl(SystemSettingRepository systemSettingRepository,
+                                    AuditLogRepository auditLogRepository,
+                                    UserRepository userRepository,
+                                    @Value(&quot;${billing.consultation-fee:500.00}&quot;) BigDecimal defaultConsultationFee,
+<span class="fc" id="L48">                                    @Value(&quot;${backup.monthly.execution-time:23:59}&quot;) String executionTime) {</span>
+<span class="fc" id="L49">        this.systemSettingRepository = systemSettingRepository;</span>
+<span class="fc" id="L50">        this.auditLogRepository = auditLogRepository;</span>
+<span class="fc" id="L51">        this.userRepository = userRepository;</span>
+<span class="fc" id="L52">        this.defaultConsultationFee = defaultConsultationFee;</span>
+<span class="fc" id="L53">        this.executionTime = executionTime;</span>
+<span class="fc" id="L54">    }</span>
+
+    // ------------------------------------------------------------------
+    // Backup schedule
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public Integer getBackupDayOfMonth() {
+<span class="fc" id="L63">        return readInt(SystemSetting.KEY_BACKUP_SCHEDULE_DAY_OF_MONTH)</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                .filter(day -&gt; day &gt;= 1 &amp;&amp; day &lt;= 31)</span>
+<span class="fc" id="L65">                .orElse(DEFAULT_BACKUP_SCHEDULE_DAY_OF_MONTH);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BackupScheduleResponse getBackupSchedule() {
+<span class="fc" id="L71">        int day = getBackupDayOfMonth();</span>
+<span class="fc" id="L72">        return new BackupScheduleResponse(day, executionTime, nextRunDate(LocalDate.now(), day));</span>
+    }
+
+    @Override
+    public BackupScheduleResponse updateBackupSchedule(UpdateBackupScheduleRequest request) {
+<span class="fc" id="L77">        int day = request.dayOfMonth(); // validated 1-31 by the DTO</span>
+
+<span class="fc" id="L79">        saveSetting(SystemSetting.KEY_BACKUP_SCHEDULE_DAY_OF_MONTH,</span>
+<span class="fc" id="L80">                String.valueOf(day),</span>
+                &quot;Day of month for automatic monthly backup at end of day (1-31)&quot;);
+<span class="fc" id="L82">        log.info(&quot;Backup schedule updated | dayOfMonth={} | nextRun={}&quot;,</span>
+<span class="fc" id="L83">                day, nextRunDate(LocalDate.now(), day));</span>
+<span class="fc" id="L84">        recordAudit(&quot;UPDATE&quot;, SystemSetting.KEY_BACKUP_SCHEDULE_DAY_OF_MONTH,</span>
+                &quot;Monthly backup schedule set to day &quot; + day + &quot; of the month&quot;);
+
+<span class="fc" id="L87">        return new BackupScheduleResponse(day, executionTime, nextRunDate(LocalDate.now(), day));</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Consultation fee
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getConsultationFee() {
+<span class="fc" id="L97">        return readValue(SystemSetting.KEY_CONSULTATION_FEE)</span>
+<span class="fc" id="L98">                .flatMap(SystemSettingServiceImpl::parseMoney)</span>
+<span class="fc" id="L99">                .orElse(defaultConsultationFee)</span>
+<span class="fc" id="L100">                .setScale(MONEY_SCALE, MONEY_ROUNDING);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ConsultationFeeResponse getConsultationFeeSetting() {
+<span class="fc" id="L106">        return new ConsultationFeeResponse(getConsultationFee());</span>
+    }
+
+    @Override
+    public ConsultationFeeResponse updateConsultationFee(UpdateConsultationFeeRequest request) {
+<span class="fc" id="L111">        BigDecimal fee = request.consultationFee().setScale(MONEY_SCALE, MONEY_ROUNDING);</span>
+
+<span class="fc" id="L113">        saveSetting(SystemSetting.KEY_CONSULTATION_FEE,</span>
+<span class="fc" id="L114">                fee.toPlainString(),</span>
+                &quot;Standard consultation fee amount&quot;);
+<span class="fc" id="L116">        log.info(&quot;Consultation fee updated | consultationFee={}&quot;, fee);</span>
+<span class="fc" id="L117">        recordAudit(&quot;UPDATE&quot;, SystemSetting.KEY_CONSULTATION_FEE,</span>
+<span class="fc" id="L118">                &quot;Consultation fee set to &quot; + fee.toPlainString());</span>
+
+<span class="fc" id="L120">        return new ConsultationFeeResponse(fee);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Next date the monthly backup runs on, given the configured day.
+     * Days beyond a month's length run on that month's last day; when the
+     * configured day already passed this month, the run rolls to next month.
+     */
+    static LocalDate nextRunDate(LocalDate from, int dayOfMonth) {
+<span class="fc" id="L133">        LocalDate candidate = atEffectiveDay(from, dayOfMonth);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        return candidate.isBefore(from)</span>
+<span class="fc" id="L135">                ? atEffectiveDay(from.plusMonths(1), dayOfMonth)</span>
+<span class="fc" id="L136">                : candidate;</span>
+    }
+
+    /** Clamps the configured day to the month's length (e.g. 31 -&gt; 28 in February). */
+    static LocalDate atEffectiveDay(LocalDate month, int dayOfMonth) {
+<span class="fc" id="L141">        return month.withDayOfMonth(Math.min(dayOfMonth, month.lengthOfMonth()));</span>
+    }
+
+    private Optional&lt;String&gt; readValue(String key) {
+<span class="fc" id="L145">        return systemSettingRepository.findById(key).map(SystemSetting::getSettingValue);</span>
+    }
+
+    private Optional&lt;Integer&gt; readInt(String key) {
+<span class="fc" id="L149">        return readValue(key).flatMap(SystemSettingServiceImpl::parseInt);</span>
+    }
+
+    private static Optional&lt;Integer&gt; parseInt(String raw) {
+        try {
+<span class="fc" id="L154">            return Optional.of(Integer.parseInt(raw.trim()));</span>
+<span class="fc" id="L155">        } catch (NumberFormatException exception) {</span>
+<span class="fc" id="L156">            log.warn(&quot;Invalid integer system setting value '{}' | falling back to default&quot;, raw);</span>
+<span class="fc" id="L157">            return Optional.empty();</span>
+        }
+    }
+
+    private static Optional&lt;BigDecimal&gt; parseMoney(String raw) {
+        try {
+<span class="fc" id="L163">            return Optional.of(new BigDecimal(raw.trim()));</span>
+<span class="fc" id="L164">        } catch (NumberFormatException exception) {</span>
+<span class="fc" id="L165">            log.warn(&quot;Invalid decimal system setting value '{}' | falling back to default&quot;, raw);</span>
+<span class="fc" id="L166">            return Optional.empty();</span>
+        }
+    }
+
+    private void saveSetting(String key, String value, String description) {
+<span class="fc" id="L171">        SystemSetting setting = systemSettingRepository.findById(key).orElseGet(SystemSetting::new);</span>
+<span class="fc" id="L172">        setting.setSettingKey(key);</span>
+<span class="fc" id="L173">        setting.setSettingValue(value);</span>
+<span class="fc" id="L174">        setting.setDescription(description);</span>
+<span class="fc" id="L175">        systemSettingRepository.save(setting);</span>
+<span class="fc" id="L176">    }</span>
+
+    /** Audit trail for settings changes; skipped when no authenticated user (e.g. tests). */
+    private void recordAudit(String action, String entityId, String description) {
+<span class="fc" id="L180">        Optional&lt;User&gt; actor = resolveAuthenticatedUser();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (actor.isEmpty()) {</span>
+<span class="fc" id="L182">            return;</span>
+        }
+<span class="fc" id="L184">        AuditLog audit = new AuditLog();</span>
+<span class="fc" id="L185">        audit.setUser(actor.get());</span>
+<span class="fc" id="L186">        audit.setAction(action);</span>
+<span class="fc" id="L187">        audit.setActionType(&quot;DOMAIN_EVENT&quot;);</span>
+<span class="fc" id="L188">        audit.setEntityType(&quot;SystemSetting&quot;);</span>
+<span class="fc" id="L189">        audit.setEntityId(entityId);</span>
+<span class="fc" id="L190">        audit.setDescription(description);</span>
+<span class="fc" id="L191">        audit.setTimestamp(LocalDateTime.now());</span>
+<span class="fc" id="L192">        auditLogRepository.save(audit);</span>
+<span class="fc" id="L193">    }</span>
+
+    private Optional&lt;User&gt; resolveAuthenticatedUser() {
+<span class="fc" id="L196">        Long userId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        return userId != null</span>
+<span class="fc" id="L198">                ? userRepository.findById(userId)</span>
+<span class="fc" id="L199">                : SecurityUtil.getCurrentUsername().flatMap(userRepository::findByUsername);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

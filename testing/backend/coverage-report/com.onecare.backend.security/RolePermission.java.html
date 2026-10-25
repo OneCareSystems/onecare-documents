@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RolePermission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.security</a> &gt; <span class="el_source">RolePermission.java</span></div><h1>RolePermission.java</h1><pre class="source lang-java linenums">package com.onecare.backend.security;
+import com.onecare.backend.enums.Role;
+
+import java.util.Set;
+
+public final class RolePermission {
+
+    private RolePermission() {
+    }
+
+    public static Set&lt;String&gt; getPermissions(Role role) {
+
+<span class="fc bfc" id="L13" title="All 4 branches covered.">        return switch (role) {</span>
+
+<span class="fc" id="L15">            case SUPER_ADMIN -&gt; Set.of(</span>
+                    Permission.PRESCRIPTION_DISPENSE,
+                    Permission.USER_CREATE,
+                    Permission.USER_READ_ALL,
+                    Permission.USER_UPDATE,
+                    Permission.USER_DELETE,
+                    Permission.USER_ROLE_ASSIGN,
+
+                    Permission.PATIENT_CREATE,
+                    Permission.PATIENT_READ_ALL,
+                    Permission.PATIENT_READ,
+                    Permission.PATIENT_UPDATE,
+                    Permission.PATIENT_DELETE,
+
+                    Permission.MEDICINE_CREATE,
+                    Permission.MEDICINE_READ_ALL,
+                    Permission.MEDICINE_READ,
+                    Permission.MEDICINE_UPDATE,
+                    Permission.MEDICINE_DELETE,
+
+                    Permission.PRESCRIPTION_READ_ALL,
+                    Permission.PRESCRIPTION_READ,
+                    
+                    Permission.APPOINTMENT_CREATE,
+                    Permission.APPOINTMENT_READ_ALL,
+                    Permission.APPOINTMENT_READ,
+                    Permission.APPOINTMENT_UPDATE,
+
+                    Permission.INVOICE_CREATE,
+                    Permission.INVOICE_READ,
+                    Permission.INVOICE_UPDATE,
+                    Permission.INVOICE_PAY,
+
+                    Permission.AUDIT_READ_ALL,
+
+                    Permission.REPORT_GENERATE,
+                    Permission.REPORT_CLINIC_GENERATE,
+                    Permission.REPORT_PHARMACY_GENERATE,
+
+                    Permission.SCHEDULE_READ,
+                    Permission.SCHEDULE_MANAGE,
+
+                    Permission.ROLE_PERMISSION_READ,
+                    Permission.ROLE_PERMISSION_UPDATE,
+
+                    Permission.SYSTEM_BACKUP,
+                    Permission.SYSTEM_RESTORE
+            );
+
+<span class="fc" id="L64">            case ADMIN -&gt; Set.of(</span>
+                    Permission.USER_CREATE,
+                    Permission.USER_READ_ALL,
+                    Permission.USER_UPDATE,
+
+                    Permission.PATIENT_CREATE,
+                    Permission.PATIENT_READ_ALL,
+                    Permission.PATIENT_READ,
+                    Permission.PATIENT_UPDATE,
+
+                    Permission.MEDICINE_CREATE,
+                    Permission.MEDICINE_READ_ALL,
+                    Permission.MEDICINE_READ,
+                    Permission.MEDICINE_UPDATE,
+
+                    Permission.PRESCRIPTION_READ_ALL,
+                    Permission.PRESCRIPTION_READ,
+                    Permission.PRESCRIPTION_STATUS_UPDATE,
+
+                    Permission.APPOINTMENT_CREATE,
+                    Permission.APPOINTMENT_READ_ALL,
+                    Permission.APPOINTMENT_READ,
+                    Permission.APPOINTMENT_UPDATE,
+
+                    Permission.INVOICE_CREATE,
+                    Permission.INVOICE_READ,
+                    Permission.INVOICE_UPDATE,
+                    Permission.INVOICE_PAY,
+
+                    Permission.AUDIT_READ_ALL,
+
+                    Permission.REPORT_GENERATE,
+                    Permission.REPORT_CLINIC_GENERATE
+            );
+
+<span class="fc" id="L99">            case DOCTOR -&gt; Set.of(</span>
+                    Permission.PATIENT_READ_ALL,
+                    Permission.PATIENT_READ,
+                    Permission.PATIENT_UPDATE,
+
+                    Permission.MEDICINE_READ,
+
+                    Permission.APPOINTMENT_READ_ALL,
+                    Permission.APPOINTMENT_READ,
+                    Permission.APPOINTMENT_UPDATE,
+                    Permission.APPOINTMENT_READ_CLINICAL_NOTES,
+                    Permission.APPOINTMENT_WRITE_CLINICAL_NOTES,
+
+                    Permission.PRESCRIPTION_CREATE,
+                    Permission.PRESCRIPTION_READ_ALL,
+                    Permission.PRESCRIPTION_READ,
+                    Permission.PRESCRIPTION_UPDATE,
+
+                    Permission.SCHEDULE_READ
+            );
+
+<span class="fc" id="L120">            case PHARMACIST -&gt; Set.of(</span>
+                    Permission.MEDICINE_CREATE,
+                    Permission.MEDICINE_READ_ALL,
+                    Permission.MEDICINE_READ,
+                    Permission.MEDICINE_UPDATE,
+                    Permission.MEDICINE_DELETE,
+
+                    Permission.PRESCRIPTION_READ_ALL,
+                    Permission.PRESCRIPTION_READ,
+                    Permission.PRESCRIPTION_DISPENSE,
+                    Permission.PRESCRIPTION_STATUS_UPDATE,
+
+                    // AC4 (Table 9): pharmacists do NOT read clinical notes or
+                    // medical history — dispensing context comes from the
+                    // prescription, not the appointment's clinical notes.
+
+                    Permission.INVOICE_CREATE,
+                    Permission.INVOICE_READ,
+                    Permission.INVOICE_UPDATE,
+                    Permission.INVOICE_PAY,
+
+                    Permission.REPORT_PHARMACY_GENERATE
+            );
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

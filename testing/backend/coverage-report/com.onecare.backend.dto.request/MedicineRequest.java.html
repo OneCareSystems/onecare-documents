@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MedicineRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.request</a> &gt; <span class="el_source">MedicineRequest.java</span></div><h1>MedicineRequest.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.request;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+<span class="fc" id="L10">public record MedicineRequest(</span>
+
+        @NotBlank(message = &quot;Medicine name is required&quot;)
+        String name,
+
+        String genericName,
+
+        @NotBlank(message = &quot;Category is required&quot;)
+        String category,
+
+        @NotBlank(message = &quot;Unit is required&quot;)
+        String unit,
+
+        @NotNull(message = &quot;Price is required&quot;)
+        @DecimalMin(
+                value = &quot;0.0&quot;,
+                inclusive = false,
+                message = &quot;Price must be greater than 0&quot;
+        )
+        BigDecimal price,
+
+
+        @NotNull(message = &quot;Expiry date is required&quot;)
+        LocalDate expiryDate,
+
+        @NotNull(message = &quot;Reorder level is required&quot;)
+        @DecimalMin(
+                value = &quot;0.0&quot;,
+                inclusive = true,
+                message = &quot;Reorder level must be greater than or equal to 0&quot;
+        )
+        Integer reorderLevel,
+
+        Boolean isQuarantined
+) {
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

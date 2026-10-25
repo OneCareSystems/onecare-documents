@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryInputValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.query</a> &gt; <span class="el_source">QueryInputValidator.java</span></div><h1>QueryInputValidator.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.query;
+
+import java.text.Normalizer;
+
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+
+/**
+ * API-03: validates and cleans the free-text patient query. No Spring dependency, so it is unit-tested without the app.
+ *
+ * What it does, in order:
+ *   1. rejects anything that is not a JSON string (number, boolean, list, object, null)        -&gt; &quot;non-text payload&quot;
+ *   2. rejects malformed Unicode (a lone surrogate)
+ *   3. normalises to NFC (the same form Django uses, so Tamil text compares equal on both sides)
+ *   4. removes invisible/control characters that are used to hide or spoof text:
+ *        control characters, bidi overrides (U+202A-202E, U+2066-2069), zero-width space, word joiner, BOM,
+ *        soft hyphen, the Unicode &quot;tag&quot; characters (U+E0000-E007F) and variation selectors (U+E0100-E01EF)
+ *      It KEEPS U+200C (ZWNJ) and U+200D (ZWJ), which are legitimate in Indic scripts, and every Tamil letter and sign.
+ *   5. collapses every run of whitespace (tabs, newlines, NBSP ...) into one space and trims
+ *   6. enforces the length cap in Unicode CODE POINTS (not UTF-16 units), so a Tamil query is not penalised
+ *   7. requires at least one letter or digit (emoji or punctuation only is not a question)
+ * It does NOT strip HTML or quotes: &quot;&lt;5 mg&quot; is legitimate text, and the query is never rendered as HTML by the server.
+ */
+public final class QueryInputValidator {
+    private final int maxChars;
+
+<span class="fc" id="L26">    public QueryInputValidator(int maxChars) {</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (maxChars &lt; 1) throw new IllegalArgumentException(&quot;maxChars must be at least 1&quot;);</span>
+<span class="fc" id="L28">        this.maxChars = maxChars;</span>
+<span class="fc" id="L29">    }</span>
+
+<span class="fc" id="L31">    public int maxChars() { return maxChars; }</span>
+
+    /** Returns the cleaned query, or throws InvalidInputException (HTTP 400). */
+    public String sanitize(Object raw) {
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (raw == null) throw new InvalidInputException(&quot;'query' is required.&quot;);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (!(raw instanceof String text)) throw new InvalidInputException(&quot;'query' must be text.&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (text.length() &gt; maxChars * 4L + 64) throw tooLong();              // cheap guard before any processing</span>
+<span class="fc" id="L38">        rejectLoneSurrogates(text);</span>
+
+<span class="fc" id="L40">        String normalized = Normalizer.normalize(text, Normalizer.Form.NFC);</span>
+<span class="fc" id="L41">        StringBuilder out = new StringBuilder(normalized.length());</span>
+<span class="fc" id="L42">        boolean pendingSpace = false;</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (int i = 0; i &lt; normalized.length(); ) {</span>
+<span class="fc" id="L44">            int cp = normalized.codePointAt(i);</span>
+<span class="fc" id="L45">            i += Character.charCount(cp);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (isSpace(cp)) {</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                pendingSpace = out.length() &gt; 0;</span>
+<span class="fc" id="L48">                continue;</span>
+            }
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (isRemoved(cp)) continue;</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (pendingSpace) {</span>
+<span class="fc" id="L52">                out.append(' ');</span>
+<span class="fc" id="L53">                pendingSpace = false;</span>
+            }
+<span class="fc" id="L55">            out.appendCodePoint(cp);</span>
+<span class="fc" id="L56">        }</span>
+
+<span class="fc" id="L58">        String cleaned = out.toString();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (cleaned.isEmpty()) throw new InvalidInputException(&quot;'query' is required.&quot;);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (cleaned.codePointCount(0, cleaned.length()) &gt; maxChars) throw tooLong();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (cleaned.codePoints().noneMatch(Character::isLetterOrDigit)) throw new InvalidInputException(&quot;'query' must contain text.&quot;);</span>
+<span class="fc" id="L62">        return cleaned;</span>
+    }
+
+    private InvalidInputException tooLong() {
+<span class="fc" id="L66">        return new InvalidInputException(&quot;'query' must be at most &quot; + maxChars + &quot; characters.&quot;);</span>
+    }
+
+    private static void rejectLoneSurrogates(String text) {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (int i = 0; i &lt; text.length(); i++) {</span>
+<span class="fc" id="L71">            char c = text.charAt(i);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (Character.isHighSurrogate(c)) {</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">                if (i + 1 &gt;= text.length() || !Character.isLowSurrogate(text.charAt(i + 1))) throw badUnicode();</span>
+<span class="fc" id="L74">                i++;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            } else if (Character.isLowSurrogate(c)) {</span>
+<span class="fc" id="L76">                throw badUnicode();</span>
+            }
+        }
+<span class="fc" id="L79">    }</span>
+
+    private static InvalidInputException badUnicode() {
+<span class="fc" id="L82">        return new InvalidInputException(&quot;'query' contains invalid characters.&quot;);</span>
+    }
+
+    private static boolean isSpace(int cp) {
+<span class="fc bfc" id="L86" title="All 6 branches covered.">        return cp == ' ' || Character.isWhitespace(cp) || Character.isSpaceChar(cp);</span>
+    }
+
+    private static boolean isRemoved(int cp) {
+<span class="fc bfc" id="L90" title="All 4 branches covered.">        if (cp == 0x200C || cp == 0x200D) return false;                          // ZWNJ / ZWJ are valid in Indic text</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        if (cp &gt;= 0xE0100 &amp;&amp; cp &lt;= 0xE01EF) return true;                         // variation selectors supplement</span>
+<span class="fc" id="L92">        int type = Character.getType(cp);</span>
+<span class="fc bfc" id="L93" title="All 6 branches covered.">        return type == Character.CONTROL || type == Character.FORMAT || type == Character.PRIVATE_USE;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

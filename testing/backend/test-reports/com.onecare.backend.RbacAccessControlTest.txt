@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.onecare.backend.RbacAccessControlTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.577 s -- in com.onecare.backend.RbacAccessControlTest

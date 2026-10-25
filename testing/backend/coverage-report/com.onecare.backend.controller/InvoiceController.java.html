@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvoiceController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">InvoiceController.java</span></div><h1>InvoiceController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.GenerateInvoiceRequest;
+import com.onecare.backend.dto.request.RecordPaymentRequest;
+import com.onecare.backend.dto.request.UpdateInvoiceRequest;
+import com.onecare.backend.dto.response.InvoiceResponse;
+import com.onecare.backend.dto.response.InvoiceSummaryResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.InvoiceService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+
+@Tag(name = &quot;Invoices&quot;, description = &quot;Billing: invoice generation, line correction and &quot;
+        + &quot;cash payments. Admin / Super Admin / Pharmacist only.&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/invoices&quot;)
+public class InvoiceController {
+
+    private final InvoiceService invoiceService;
+
+<span class="fc" id="L35">    public InvoiceController(InvoiceService invoiceService) {</span>
+<span class="fc" id="L36">        this.invoiceService = invoiceService;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Operation(
+            summary = &quot;Generate an invoice (FR035, UC22)&quot;,
+            description = &quot;Exactly one source: appointmentId bills a COMPLETED consultation, &quot;
+                    + &quot;dispenseId bills one external dispensing event. A consultation invoice &quot;
+                    + &quot;carries a system-managed consultation charge (configured fee) plus one &quot;
+                    + &quot;line per dispensed in-house item, quantity and unit price snapshotted &quot;
+                    + &quot;from the catalog; while the prescription has not been collected yet it &quot;
+                    + &quot;is consultation-only and the medicine is billed later on per-event &quot;
+                    + &quot;dispense invoices (medicines only, no consultation line, patient &quot;
+                    + &quot;optional for unknown walk-ins). External-purchase items are excluded. &quot;
+                    + &quot;Totals use 2-decimal HALF_UP precision, a unique invoice number and &quot;
+                    + &quot;timestamp are assigned and the status starts as UNPAID (clients can &quot;
+                    + &quot;never send a status). Returns 201; 400 for an incomplete consultation &quot;
+                    + &quot;or both/neither source given; 404 for an unknown appointment or &quot;
+                    + &quot;dispense event; 409 when that consultation or dispense event is &quot;
+                    + &quot;already invoiced (AC7); 403 without INVOICE_CREATE.&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;, description = &quot;Invoice generated&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Consultation not completed or validation error&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing INVOICE_CREATE permission&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Appointment or dispense event not found&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;409&quot;, description = &quot;Consultation or dispense event already invoiced&quot;)
+    })
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.INVOICE_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; generateInvoice(
+            @Valid @RequestBody GenerateInvoiceRequest request) {
+
+<span class="fc" id="L67">        InvoiceResponse response = invoiceService.generateInvoice(request);</span>
+<span class="fc" id="L68">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L69">                .body(new ApiResponse&lt;&gt;(true, &quot;Invoice generated successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;List invoices (FR038, UC23)&quot;,
+            description = &quot;Paginated, newest first: page defaults to 0, size defaults to 20 and is &quot;
+                    + &quot;capped at 100. Optional filters: patientId, partial invoiceNumber, status &quot;
+                    + &quot;(UNPAID or PAID - any other value returns 400) and an inclusive date range &quot;
+                    + &quot;(dateFrom/dateTo as yyyy-MM-dd, evaluated on createdAt). Rows carry no line &quot;
+                    + &quot;items or payments; fetch a single invoice for the full view. &quot;
+                    + &quot;Returns 403 without INVOICE_READ.&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Invoices retrieved&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid status filter or date range&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing INVOICE_READ permission&quot;)
+    })
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.INVOICE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Page&lt;?&gt;&gt;&gt; listInvoices(
+            @Parameter(description = &quot;Filter by patient id&quot;)
+            @RequestParam(required = false) Long patientId,
+            @Parameter(description = &quot;Partial invoice number, case-insensitive&quot;)
+            @RequestParam(required = false) String invoiceNumber,
+            @Parameter(description = &quot;Status filter: UNPAID or PAID&quot;)
+            @RequestParam(required = false) String status,
+            @Parameter(description = &quot;Inclusive lower bound of createdAt (yyyy-MM-dd)&quot;)
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = &quot;Inclusive upper bound of createdAt (yyyy-MM-dd)&quot;)
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(description = &quot;Zero-based page index, default 0&quot;)
+            @RequestParam(required = false, defaultValue = &quot;0&quot;) Integer page,
+            @Parameter(description = &quot;Page size, default 20, max 100&quot;)
+            @RequestParam(required = false, defaultValue = &quot;20&quot;) Integer size) {
+
+<span class="fc" id="L103">        Page&lt;InvoiceSummaryResponse&gt; invoices =</span>
+<span class="fc" id="L104">                invoiceService.listInvoices(patientId, invoiceNumber, status, dateFrom, dateTo, page, size);</span>
+
+<span class="fc" id="L106">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Invoices retrieved successfully&quot;, invoices));
+    }
+
+    @Operation(
+            summary = &quot;View / reprint an invoice (FR038, UC23)&quot;,
+            description = &quot;Returns the historical invoice with its snapshotted lines and recorded &quot;
+                    + &quot;payments. Line unit prices are the values locked at generation time, never &quot;
+                    + &quot;re-read from the catalog. Returns 404 for an unknown invoice and 403 without &quot;
+                    + &quot;INVOICE_READ.&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Invoice retrieved&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing INVOICE_READ permission&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Invoice not found&quot;)
+    })
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.INVOICE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findInvoiceById(@PathVariable Long id) {
+
+<span class="fc" id="L125">        InvoiceResponse response = invoiceService.findInvoiceById(id);</span>
+<span class="fc" id="L126">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Invoice retrieved successfully&quot;, response));
+    }
+
+    @Operation(
+            summary = &quot;Correct invoice lines (UC22 alt flow)&quot;,
+            description = &quot;Replaces the medicine lines of an UNPAID invoice: the body lists the &quot;
+                    + &quot;lines that must remain with their new quantity (&gt;= 1) and omitted lines are &quot;
+                    + &quot;dropped; the consultation line is system-managed and always kept. Unit &quot;
+                    + &quot;prices stay the snapshots already on the invoice - they cannot be edited. &quot;
+                    + &quot;The total is recalculated and the request is rejected if the new total would &quot;
+                    + &quot;be less than amountPaid. Paid invoices are immutable. Returns 200; 400 for a &quot;
+                    + &quot;paid invoice, a foreign/unknown line or a total below amountPaid; 404 for an &quot;
+                    + &quot;unknown invoice; 403 without INVOICE_UPDATE. A rejected request changes &quot;
+                    + &quot;nothing (AC3).&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Invoice lines corrected&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Paid invoice, line not editable or total below amountPaid&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing INVOICE_UPDATE permission&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Invoice not found&quot;)
+    })
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.INVOICE_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; updateInvoiceLines(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateInvoiceRequest request) {
+
+<span class="fc" id="L153">        InvoiceResponse response = invoiceService.updateInvoiceLines(id, request);</span>
+<span class="fc" id="L154">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Invoice lines updated successfully&quot;, response));
+    }
+
+    @Operation(
+            summary = &quot;Record a cash payment (FR036, FR037, UC23)&quot;,
+            description = &quot;Domain action POST /api/invoices/{id}/payments. Cash only: paymentMethod &quot;
+                    + &quot;must be CASH, any other value is a 400 and no state changes. amount must be &quot;
+                    + &quot;&gt; 0 with at most 2 decimal places and can never exceed the outstanding &quot;
+                    + &quot;balance (total - amountPaid). A partial payment keeps the status UNPAID with &quot;
+                    + &quot;the raised amountPaid; a payment that settles the balance sets amountPaid = &quot;
+                    + &quot;total and the status to PAID. Optimistic locking makes concurrent conflicting &quot;
+                    + &quot;payments safe: one succeeds, the other gets 409. Returns 201; 400 for an &quot;
+                    + &quot;invalid amount or an already paid invoice; 404 for an unknown invoice; 409 &quot;
+                    + &quot;for a concurrent modification; 403 without INVOICE_PAY.&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;, description = &quot;Payment recorded&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Non-cash method, invalid amount or invoice already paid&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing INVOICE_PAY permission&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Invoice not found&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;409&quot;, description = &quot;Invoice modified by a concurrent request&quot;)
+    })
+    @PostMapping(&quot;/{id}/payments&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.INVOICE_PAY + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; recordPayment(
+            @PathVariable Long id,
+            @Valid @RequestBody RecordPaymentRequest request) {
+
+<span class="fc" id="L182">        InvoiceResponse response = invoiceService.recordPayment(id, request);</span>
+<span class="fc" id="L183">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L184">                .body(new ApiResponse&lt;&gt;(true, &quot;Payment recorded successfully&quot;, response));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

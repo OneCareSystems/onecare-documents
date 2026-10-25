@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemSetting.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.entity</a> &gt; <span class="el_source">SystemSetting.java</span></div><h1>SystemSetting.java</h1><pre class="source lang-java linenums">package com.onecare.backend.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * Generic key-value store for runtime-configurable system settings
+ * (e.g. backup schedule day, consultation fee). Missing rows fall back
+ * to defaults declared in {@code SystemSettingServiceImpl}.
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = &quot;system_settings&quot;)
+public class SystemSetting {
+
+    public static final String KEY_BACKUP_SCHEDULE_DAY_OF_MONTH = &quot;BACKUP_SCHEDULE_DAY_OF_MONTH&quot;;
+    public static final String KEY_CONSULTATION_FEE = &quot;CONSULTATION_FEE&quot;;
+
+    @Id
+    @Column(name = &quot;setting_key&quot;, length = 100)
+    private String settingKey;
+
+    @Column(name = &quot;setting_value&quot;, nullable = false, length = 255)
+    private String settingValue;
+
+    @Column(name = &quot;description&quot;, length = 255)
+    private String description;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    void onCreate() {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (updatedAt == null) {</span>
+<span class="fc" id="L46">            updatedAt = LocalDateTime.now();</span>
+        }
+<span class="fc" id="L48">    }</span>
+
+    @PreUpdate
+    void onUpdate() {
+<span class="nc" id="L52">        updatedAt = LocalDateTime.now();</span>
+<span class="nc" id="L53">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

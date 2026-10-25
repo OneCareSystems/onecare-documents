@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">UserController.java</span></div><h1>UserController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.AssignRoleRequest;
+import com.onecare.backend.dto.request.UserCreateRequest;
+import com.onecare.backend.dto.request.UserUpdateRequest;
+import com.onecare.backend.dto.response.UserResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.UserService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+
+@Tag(name = &quot;User Management&quot;, description = &quot;Super Admin user &amp; access management&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/users&quot;)
+public class UserController {
+
+    private final UserService userService;
+
+<span class="fc" id="L33">    public UserController(UserService userService) {</span>
+<span class="fc" id="L34">        this.userService = userService;</span>
+<span class="fc" id="L35">    }</span>
+
+    
+    @Operation(summary = &quot;Create a user&quot;, description = &quot;Creates a user with a hashed password. Requires USER_CREATE.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;, description = &quot;User created&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation error or invalid role&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_CREATE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;409&quot;, description = &quot;Username or email already exists&quot;)
+    })
+    
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; createUser(@Valid @RequestBody UserCreateRequest request) {
+<span class="fc" id="L49">        UserResponse response = userService.createUser(request);</span>
+<span class="fc" id="L50">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L51">                .body(new ApiResponse&lt;&gt;(true, &quot;User created successfully&quot;, response));</span>
+    }
+
+   
+    @Operation(summary = &quot;List users (paginated)&quot;, description = &quot;Supports page, size and sort query params. Requires USER_READ_ALL.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Users retrieved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_READ_ALL permission&quot;)
+    })
+   
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Page&lt;?&gt;&gt;&gt; findAllUsers(Pageable pageable) {
+<span class="fc" id="L64">        Page&lt;UserResponse&gt; page = userService.findAllUsers(pageable);</span>
+<span class="fc" id="L65">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Users retrieved successfully&quot;, page));</span>
+    }
+
+    
+    @Operation(summary = &quot;Get a user by id&quot;, description = &quot;Requires USER_READ_ALL or USER_READ_OWN.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;User retrieved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing read permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;User not found&quot;)
+    })
+  
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(
+            &quot;hasAuthority('&quot; + Permission.USER_READ_ALL + &quot;')&quot;
+                    + &quot; or hasAuthority('&quot; + Permission.USER_READ_OWN + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findUserById(@PathVariable Long id) {
+<span class="nc" id="L81">        UserResponse response = userService.findUserById(id);</span>
+<span class="nc" id="L82">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;User retrieved successfully&quot;, response));</span>
+    }
+
+    
+    @Operation(summary = &quot;Update a user's email&quot;, description = &quot;Only the email can be changed here. Role and unlock have their own endpoints.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;User updated&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation error&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_UPDATE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;User not found&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;409&quot;, description = &quot;Email already exists&quot;)
+    })
+  
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; updateUser(@PathVariable Long id,
+                                                      @Valid @RequestBody UserUpdateRequest request) {
+<span class="nc" id="L99">        UserResponse response = userService.updateUser(id, request);</span>
+<span class="nc" id="L100">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;User updated successfully&quot;, response));</span>
+    }
+
+    
+    @Operation(summary = &quot;Deactivate a user (soft delete)&quot;, description = &quot;Sets isActive=false. The row is NOT removed from the database.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;User deactivated&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_DELETE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;User not found&quot;)
+    })
+    
+    @DeleteMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_DELETE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; deleteUser(@PathVariable Long id) {
+<span class="nc" id="L114">        userService.deactivateUser(id);</span>
+<span class="nc" id="L115">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;User deactivated successfully&quot;));</span>
+    }
+
+    
+    @Operation(summary = &quot;Assign a role to a user&quot;, description = &quot;Role must be a valid Role enum value.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Role assigned&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid role&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_ROLE_ASSIGN permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;User not found&quot;)
+    })
+   
+    @PutMapping(&quot;/{id}/role&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_ROLE_ASSIGN + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; assignRoleToUser(@PathVariable Long id,
+                                                            @Valid @RequestBody AssignRoleRequest request) {
+<span class="nc" id="L131">        UserResponse response = userService.assignRoleToUser(id, request);</span>
+<span class="nc" id="L132">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Role assigned successfully&quot;, response));</span>
+    }
+
+    
+    @Operation(summary = &quot;Unlock a locked account&quot;, description = &quot;Resets failed attempts and clears the lock.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Account unlocked&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_ROLE_ASSIGN permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;User not found&quot;)
+    })
+   
+    @PutMapping(&quot;/{id}/unlock&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_ROLE_ASSIGN + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;UserResponse&gt;&gt; unlockAccount(@PathVariable Long id) {
+<span class="nc" id="L146">        UserResponse response = userService.unlockAccount(id);</span>
+<span class="nc" id="L147">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Account unlocked successfully&quot;,
+                        response));
+    }
+
+    
+    @Operation(summary = &quot;Reserved: admin-triggered password reset (DDP-16)&quot;,
+               description = &quot;Placeholder route. Always returns 501 until DDP-16 is merged.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;501&quot;, description = &quot;Not implemented until DDP-16 lands&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing USER_UPDATE permission&quot;)
+    })
+  
+    @PostMapping(&quot;/{id}/reset-password&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;Void&gt; resetPassword(@PathVariable Long id) {
+        // AC3: reserved until DDP-16 admin-triggered reset flow lands — must be 501, never 404
+<span class="fc" id="L166">        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLogServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">AuditLogServiceImpl.java</span></div><h1>AuditLogServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.dto.response.AuditLogResponse;
+import com.onecare.backend.entity.AuditLog;
+import com.onecare.backend.repository.AuditLogRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class AuditLogServiceImpl implements AuditLogService {
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private final AuditLogRepository auditLogRepository;
+
+<span class="fc" id="L27">    public AuditLogServiceImpl(AuditLogRepository auditLogRepository) {</span>
+<span class="fc" id="L28">        this.auditLogRepository = auditLogRepository;</span>
+<span class="fc" id="L29">    }</span>
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page&lt;AuditLogResponse&gt; search(Long userId, String actionType, String module,
+                                         LocalDate dateFrom, LocalDate dateTo,
+                                         Integer page, Integer size) {
+
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        int pageNumber = page == null ? 0 : Math.max(page, 0);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        int pageSize = size == null</span>
+<span class="nc" id="L39">                ? DEFAULT_PAGE_SIZE</span>
+<span class="fc" id="L40">                : Math.min(Math.max(size, 1), MAX_PAGE_SIZE);</span>
+
+        // Newest first, always - the trail is append-only and never re-sorted by clients.
+<span class="fc" id="L43">        Pageable pageable = PageRequest.of(</span>
+                pageNumber,
+                pageSize,
+<span class="fc" id="L46">                Sort.by(</span>
+<span class="fc" id="L47">                        Sort.Order.desc(&quot;timestamp&quot;),</span>
+<span class="fc" id="L48">                        Sort.Order.desc(&quot;logId&quot;)</span>
+                )
+        );
+
+<span class="fc" id="L52">        Specification&lt;AuditLog&gt; specification = (root, query, cb) -&gt; {</span>
+<span class="fc" id="L53">            List&lt;Predicate&gt; predicates = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (userId != null) {</span>
+<span class="fc" id="L56">                predicates.add(cb.equal(root.get(&quot;user&quot;).get(&quot;userId&quot;), userId));</span>
+            }
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">            if (actionType != null &amp;&amp; !actionType.isBlank()) {</span>
+<span class="fc" id="L59">                predicates.add(cb.equal(cb.upper(root.get(&quot;actionType&quot;)),</span>
+<span class="fc" id="L60">                        actionType.trim().toUpperCase()));</span>
+            }
+<span class="pc bpc" id="L62" title="1 of 4 branches missed.">            if (module != null &amp;&amp; !module.isBlank()) {</span>
+<span class="fc" id="L63">                predicates.add(cb.equal(cb.upper(root.get(&quot;entityType&quot;)),</span>
+<span class="fc" id="L64">                        module.trim().toUpperCase()));</span>
+            }
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            if (dateFrom != null) {</span>
+<span class="fc" id="L67">                predicates.add(cb.greaterThanOrEqualTo(</span>
+<span class="fc" id="L68">                        root.get(&quot;timestamp&quot;), dateFrom.atStartOfDay()));</span>
+            }
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (dateTo != null) {</span>
+<span class="nc" id="L71">                predicates.add(cb.lessThan(</span>
+<span class="nc" id="L72">                        root.get(&quot;timestamp&quot;), dateTo.plusDays(1).atStartOfDay()));</span>
+            }
+
+<span class="fc" id="L75">            return cb.and(predicates.toArray(new Predicate[0]));</span>
+        };
+
+<span class="fc" id="L78">        return auditLogRepository.findAll(specification, pageable)</span>
+<span class="fc" id="L79">                .map(AuditLogResponse::from);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

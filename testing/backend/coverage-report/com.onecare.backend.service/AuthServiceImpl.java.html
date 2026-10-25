@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">AuthServiceImpl.java</span></div><h1>AuthServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import io.jsonwebtoken.JwtException;
+import com.onecare.backend.dto.request.ForgotPasswordRequest;
+import com.onecare.backend.dto.request.LoginRequest;
+import com.onecare.backend.dto.request.RefreshRequest;
+import com.onecare.backend.dto.request.ResetPasswordRequest;
+import com.onecare.backend.dto.response.AuthResponse;
+import com.onecare.backend.dto.response.UserResponse;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.Role;
+import com.onecare.backend.exception.AccountLockedException;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.AppUserDetailsService;
+import com.onecare.backend.security.JwtService;
+import com.onecare.backend.security.SecurityUtil;
+import com.onecare.backend.security.TokenBlacklistService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+@Service
+public class AuthServiceImpl implements AuthService {
+
+<span class="fc" id="L30">        private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);</span>
+
+        private final AuthenticationManager authenticationManager;
+        private final AppUserDetailsService userDetailsService;
+        private final UserRepository userRepository;
+        private final JwtService jwtService;
+        private final UserService userService;
+        private final PasswordResetService passwordResetService;
+        private final TokenBlacklistService tokenBlacklistService;
+
+        public AuthServiceImpl(
+                        AuthenticationManager authenticationManager,
+                        AppUserDetailsService userDetailsService,
+                        UserRepository userRepository,
+                        JwtService jwtService,
+                        UserService userService,
+                        PasswordResetService passwordResetService,
+<span class="fc" id="L47">                        TokenBlacklistService tokenBlacklistService) {</span>
+
+<span class="fc" id="L49">                this.authenticationManager = authenticationManager;</span>
+<span class="fc" id="L50">                this.userDetailsService = userDetailsService;</span>
+<span class="fc" id="L51">                this.userRepository = userRepository;</span>
+<span class="fc" id="L52">                this.jwtService = jwtService;</span>
+<span class="fc" id="L53">                this.userService = userService;</span>
+<span class="fc" id="L54">                this.passwordResetService = passwordResetService;</span>
+<span class="fc" id="L55">                 this.tokenBlacklistService = tokenBlacklistService;</span>
+<span class="fc" id="L56">        }</span>
+
+        @Override
+        @Audited(action = &quot;LOGIN&quot;, module = &quot;AUTH&quot;)
+        public AuthResponse login(LoginRequest request) {
+
+<span class="fc" id="L62">                User user = userRepository.findByUsername(request.username())</span>
+<span class="fc" id="L63">                        .orElseThrow(() -&gt; {</span>
+<span class="fc" id="L64">                                log.warn(</span>
+                                        &quot;Login failed | username={} | reason=USER_NOT_FOUND&quot;,
+<span class="fc" id="L66">                                        request.username()</span>
+                                );
+
+<span class="fc" id="L69">                                return new BadCredentialsException(&quot;Invalid username or password&quot;);</span>
+                        });
+
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                if (userService.isAccountLocked(user)) {</span>
+
+<span class="fc" id="L74">                        log.warn(</span>
+                                &quot;Login blocked | username={} | role={} | reason=ACCOUNT_LOCKED&quot;,
+<span class="fc" id="L76">                                user.getUsername(),</span>
+<span class="fc" id="L77">                                user.getRole(),</span>
+<span class="fc" id="L78">                                user.getLockedUntil());</span>
+
+<span class="fc" id="L80">                                throw new AccountLockedException(&quot;Account is temporarily locked until &quot; + user.getLockedUntil());</span>
+                }
+
+                try {
+
+<span class="fc" id="L85">                        authenticationManager.authenticate(</span>
+                                        new UsernamePasswordAuthenticationToken(
+<span class="fc" id="L87">                                                        request.username(),</span>
+<span class="fc" id="L88">                                                        request.password()));</span>
+
+<span class="fc" id="L90">                        userService.recordSuccessfulLogin(user);</span>
+
+<span class="fc" id="L92">                        Role role = user.getRole();</span>
+
+<span class="fc" id="L94">                        String accessToken = jwtService.issueAccessToken(</span>
+<span class="fc" id="L95">                                        user.getUserId(),</span>
+<span class="fc" id="L96">                                        user.getUsername(),</span>
+<span class="fc" id="L97">                                        role.name());</span>
+
+<span class="fc" id="L99">                        String refreshToken = jwtService.issueRefreshToken(</span>
+<span class="fc" id="L100">                                        user.getUsername());</span>
+
+<span class="fc" id="L102">                        log.info(</span>
+                                &quot;Login successful | username={} | role={}&quot;,
+<span class="fc" id="L104">                                user.getUsername(),</span>
+                                role
+                        );
+
+<span class="fc" id="L108">                        return AuthResponse.of(</span>
+<span class="fc" id="L109">                                        user.getUsername(),</span>
+                                        accessToken,
+                                        refreshToken,
+<span class="fc" id="L112">                                        jwtService.getAccessTokenExpiry(),</span>
+                                        role);
+
+<span class="fc" id="L115">                } catch (BadCredentialsException ex) {</span>
+<span class="fc" id="L116">                        boolean accountLocked = userService.recordFailedAttempt(user);</span>
+
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                        if (accountLocked) {</span>
+
+<span class="fc" id="L120">                                log.warn(</span>
+                                        &quot;Login failed and account locked | username={} | role={}&quot;,
+<span class="fc" id="L122">                                        user.getUsername(),</span>
+<span class="fc" id="L123">                                        user.getRole()</span>
+                                );
+
+<span class="fc" id="L126">                                throw new AccountLockedException( &quot;Account is temporarily locked until &quot; + user.getLockedUntil() );</span>
+                        }
+
+<span class="fc" id="L129">                        throw ex;</span>
+                }
+        }
+
+        @Override
+        @Audited(action = &quot;TOKEN_REFRESH&quot;, module = &quot;AUTH&quot;)
+        public AuthResponse refresh(RefreshRequest request) {
+
+<span class="fc" id="L137">                String refreshToken = request.refreshToken();</span>
+
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                if (!&quot;refresh&quot;.equals(jwtService.extractType(refreshToken))) {</span>
+
+<span class="fc" id="L141">                        log.warn(</span>
+                                &quot;Refresh token rejected | reason=INVALID_TOKEN_TYPE&quot;
+                        );
+
+<span class="fc" id="L145">                        throw new BadCredentialsException(&quot;Invalid refresh token&quot;);</span>
+                }
+
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if (tokenBlacklistService.isBlacklisted(refreshToken)) {</span>
+
+<span class="fc" id="L150">                        log.warn(</span>
+                                &quot;Refresh token rejected | reason=TOKEN_REVOKED&quot;
+                        );
+
+<span class="fc" id="L154">                        throw new BadCredentialsException(&quot;Refresh token has been revoked&quot;);</span>
+                }
+
+<span class="fc" id="L157">                String username = jwtService.extractUsername(refreshToken);</span>
+
+<span class="fc" id="L159">                UserDetails userDetails = userDetailsService.loadUserByUsername(username);</span>
+
+<span class="fc" id="L161">                User user = userRepository.findByUsername(userDetails.getUsername())</span>
+<span class="pc" id="L162">                                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;User not found for refresh&quot;));</span>
+
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                if (!Boolean.TRUE.equals(user.getIsActive())) {</span>
+
+<span class="fc" id="L166">                        log.warn(</span>
+                                &quot;Refresh token rejected | username={} | reason=ACCOUNT_INACTIVE&quot;,
+                                username
+                        );
+
+<span class="fc" id="L171">                        throw new BadCredentialsException(&quot;Account is inactive&quot;);</span>
+                }
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                if (userService.isAccountLocked(user)) {</span>
+
+<span class="fc" id="L176">                        log.warn(</span>
+                                &quot;Refresh token rejected | username={} | reason=ACCOUNT_LOCKED&quot;,
+                                username
+                        );
+
+<span class="fc" id="L181">                        throw new AccountLockedException( &quot;Account is temporarily locked until &quot; + user.getLockedUntil());</span>
+                }
+
+<span class="fc" id="L184">                Role role = user.getRole();</span>
+
+<span class="fc" id="L186">                String newAccessToken = jwtService.issueAccessToken(</span>
+<span class="fc" id="L187">                                user.getUserId(),</span>
+                                username,
+<span class="fc" id="L189">                                role.name());</span>
+
+<span class="fc" id="L191">                log.info(</span>
+                        &quot;Access token refreshed | username={} | role={}&quot;,
+                        username,
+                        role
+                );
+
+<span class="fc" id="L197">                return AuthResponse.of(</span>
+<span class="fc" id="L198">                                user.getUsername(),</span>
+                                newAccessToken,
+                                refreshToken,
+<span class="fc" id="L201">                                jwtService.getAccessTokenExpiry(),</span>
+                                role);
+        }
+
+        @Override
+        public UserResponse getCurrentUser() {
+
+<span class="fc" id="L208">                String username = SecurityUtil.getCurrentUsername()</span>
+<span class="pc" id="L209">                                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Authenticated user not found&quot;));</span>
+
+<span class="fc" id="L211">                User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L212">                                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;User not found&quot;));</span>
+
+<span class="fc" id="L214">                return UserResponse.from(user);</span>
+        }
+
+        @Override
+        public void requestPasswordReset(ForgotPasswordRequest request) {
+<span class="fc" id="L219">                passwordResetService.requestPasswordReset(request.email());</span>
+<span class="fc" id="L220">        }</span>
+
+        @Override
+        public void resetPassword(ResetPasswordRequest request) {
+<span class="fc" id="L224">                passwordResetService.resetPassword(request.token(), request.newPassword());</span>
+<span class="fc" id="L225">        }</span>
+
+        @Override
+        public void logout(String accessToken, String refreshToken) {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                if (!&quot;access&quot;.equals(jwtService.extractType(accessToken))) {</span>
+<span class="fc" id="L230">                        log.warn(&quot;Logout rejected | reason=INVALID_TOKEN_TYPE&quot;);</span>
+<span class="fc" id="L231">                        throw new BadCredentialsException(&quot;Invalid access token&quot;);</span>
+                }
+<span class="fc" id="L233">                tokenBlacklistService.blacklistToken(accessToken);</span>
+<span class="fc" id="L234">                log.info(&quot;Access token blacklisted&quot;);</span>
+
+<span class="fc bfc" id="L236" title="All 4 branches covered.">                if (refreshToken != null &amp;&amp; !refreshToken.isBlank()) {</span>
+<span class="fc" id="L237">                        revokeRefreshTokenIfPresent(refreshToken);</span>
+                }
+<span class="fc" id="L239">        }</span>
+
+        /**
+         * Blacklists the supplied refresh token so it can no longer mint new
+         * access tokens after logout. An already-expired or malformed token is
+         * skipped with a warning — logout must still succeed: the token is
+         * unusable either way.
+         */
+        private void revokeRefreshTokenIfPresent(String refreshToken) {
+                try {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">                        if (!&quot;refresh&quot;.equals(jwtService.extractType(refreshToken))) {</span>
+<span class="fc" id="L250">                                log.warn(&quot;Refresh token not blacklisted | reason=INVALID_TOKEN_TYPE&quot;);</span>
+<span class="fc" id="L251">                                return;</span>
+                        }
+<span class="fc" id="L253">                        tokenBlacklistService.blacklistToken(refreshToken);</span>
+<span class="fc" id="L254">                        log.info(&quot;Refresh token blacklisted&quot;);</span>
+<span class="fc" id="L255">                } catch (JwtException | IllegalArgumentException ex) {</span>
+<span class="fc" id="L256">                        log.warn(&quot;Refresh token not blacklisted | reason={}&quot;, ex.getClass().getSimpleName());</span>
+<span class="fc" id="L257">                }</span>
+<span class="fc" id="L258">        }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

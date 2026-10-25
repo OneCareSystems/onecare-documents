@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvoiceResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.response</a> &gt; <span class="el_source">InvoiceResponse.java</span></div><h1>InvoiceResponse.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.response;
+
+import com.onecare.backend.entity.Invoice;
+import com.onecare.backend.enums.InvoiceStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * Detail view of an invoice (GET /api/invoices/{id}, generation, edit, payment).
+ * outstandingBalance is derived: total - amountPaid.
+ */
+<span class="fc" id="L14">public record InvoiceResponse(</span>
+        Long invoiceId,
+        String invoiceNumber,
+        Long patientId,
+        Long appointmentId,
+        Long dispenseId,
+        InvoiceStatus status,
+        BigDecimal total,
+        BigDecimal amountPaid,
+        BigDecimal outstandingBalance,
+        Long createdBy,
+        LocalDateTime createdAt,
+        List&lt;InvoiceItemResponse&gt; items,
+        List&lt;PaymentResponse&gt; payments) {
+
+    public static InvoiceResponse from(Invoice invoice) {
+<span class="fc" id="L30">        return new InvoiceResponse(</span>
+<span class="fc" id="L31">                invoice.getInvoiceId(),</span>
+<span class="fc" id="L32">                invoice.getInvoiceNumber(),</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                invoice.getPatient() != null ? invoice.getPatient().getPatientId() : null,</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">                invoice.getAppointment() != null ? invoice.getAppointment().getAppointmentId() : null,</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                invoice.getDispense() != null ? invoice.getDispense().getDispenseId() : null,</span>
+<span class="fc" id="L36">                invoice.getStatus(),</span>
+<span class="fc" id="L37">                invoice.getTotal(),</span>
+<span class="fc" id="L38">                invoice.getAmountPaid(),</span>
+<span class="fc" id="L39">                invoice.getOutstandingBalance(),</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">                invoice.getCreatedBy() != null ? invoice.getCreatedBy().getUserId() : null,</span>
+<span class="fc" id="L41">                invoice.getCreatedAt(),</span>
+<span class="fc" id="L42">                invoice.getItems().stream()</span>
+<span class="fc" id="L43">                        .map(InvoiceItemResponse::from)</span>
+<span class="fc" id="L44">                        .toList(),</span>
+<span class="fc" id="L45">                invoice.getPayments().stream()</span>
+<span class="fc" id="L46">                        .map(PaymentResponse::from)</span>
+<span class="fc" id="L47">                        .toList());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

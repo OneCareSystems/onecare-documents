@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApprovedUrlValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.knowledgebase</a> &gt; <span class="el_source">ApprovedUrlValidator.java</span></div><h1>ApprovedUrlValidator.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.knowledgebase;
+
+import java.net.IDN;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+
+
+public final class ApprovedUrlValidator {
+    private static final int MAX_URL_LENGTH = 2048;
+    private final List&lt;String&gt; approvedDomains;
+
+    /** Entries look like &quot;who.int&quot; (a leading &quot;*.&quot; or &quot;.&quot; is accepted). A bad entry fails at startup, never silently. */
+<span class="fc" id="L19">    public ApprovedUrlValidator(Collection&lt;String&gt; approvedDomains) {</span>
+<span class="fc" id="L20">        List&lt;String&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (approvedDomains != null) {</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">            for (String raw : approvedDomains) {</span>
+<span class="pc bpc" id="L23" title="1 of 4 branches missed.">                if (raw != null &amp;&amp; !raw.isBlank()) list.add(normalizeDomain(raw));</span>
+<span class="fc" id="L24">            }</span>
+        }
+<span class="fc" id="L26">        this.approvedDomains = List.copyOf(list);</span>
+<span class="fc" id="L27">    }</span>
+
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">    public boolean hasApprovedDomains() { return !approvedDomains.isEmpty(); }</span>
+
+    private static String normalizeDomain(String raw) {
+<span class="fc" id="L32">        String d = raw.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (d.startsWith(&quot;*.&quot;)) d = d.substring(2);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        else if (d.startsWith(&quot;.&quot;)) d = d.substring(1);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (d.endsWith(&quot;.&quot;)) d = d.substring(0, d.length() - 1);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (!d.matches(&quot;[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+&quot;)) {</span>
+<span class="fc" id="L37">            throw new IllegalArgumentException(&quot;Invalid approved domain in the allowlist: '&quot; + raw + &quot;'&quot;);</span>
+        }
+<span class="fc" id="L39">        return d;</span>
+    }
+
+    public String validate(String url) {
+<span class="fc bfc" id="L43" title="All 6 branches covered.">        if (url == null || url.isBlank() || url.length() &gt; MAX_URL_LENGTH) throw invalid(&quot;A valid URL is required.&quot;);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        for (int i = 0; i &lt; url.length(); i++) {                    // control characters are rejected BEFORE any trimming, which would hide them</span>
+<span class="fc" id="L45">            char c = url.charAt(i);</span>
+<span class="pc bpc" id="L46" title="1 of 8 branches missed.">            if (Character.isISOControl(c) &amp;&amp; c != '\t' &amp;&amp; c != '\n' &amp;&amp; c != '\r') throw invalid(&quot;The URL contains invalid characters.&quot;);</span>
+        }
+<span class="fc" id="L48">        String text = url.strip();                                 // only plain whitespace padding is removed</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (int i = 0; i &lt; text.length(); i++) {</span>
+<span class="fc" id="L50">            char c = text.charAt(i);</span>
+<span class="pc bpc" id="L51" title="4 of 10 branches missed.">            if (c &lt;= 0x20 || c == 0x7F || Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.isISOControl(c)) {</span>
+<span class="fc" id="L52">                throw invalid(&quot;The URL contains invalid characters.&quot;);</span>
+            }
+        }
+        URI uri;
+        try {
+<span class="fc" id="L57">            uri = new URI(text);                                   // rejects backslashes, &lt;, &gt;, spaces, bad escapes</span>
+<span class="fc" id="L58">        } catch (URISyntaxException e) {</span>
+<span class="fc" id="L59">            throw invalid(&quot;The URL is not valid.&quot;);</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (!&quot;https&quot;.equalsIgnoreCase(uri.getScheme())) throw invalid(&quot;Only HTTPS links are accepted.&quot;);</span>
+
+<span class="fc" id="L63">        String authority = uri.getRawAuthority();</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (authority == null || authority.isEmpty()) throw invalid(&quot;The URL has no host.&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (authority.indexOf('@') &gt;= 0) throw invalid(&quot;Links with credentials are not accepted.&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (authority.startsWith(&quot;[&quot;)) throw invalid(&quot;IP addresses are not accepted; use an approved hostname.&quot;);</span>
+
+<span class="fc" id="L68">        String hostPart = authority;</span>
+<span class="fc" id="L69">        int colon = authority.lastIndexOf(':');</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (colon &gt;= 0) {</span>
+<span class="fc" id="L71">            hostPart = authority.substring(0, colon);</span>
+<span class="fc" id="L72">            String port = authority.substring(colon + 1);</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">            if (!port.matches(&quot;\\d{1,5}&quot;) || Integer.parseInt(port) != 443) throw invalid(&quot;Only the default HTTPS port is accepted.&quot;);</span>
+        }
+
+<span class="fc" id="L76">        String host = toAsciiHost(hostPart);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (isIpLiteral(host)) throw invalid(&quot;IP addresses are not accepted; use an approved hostname.&quot;);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!isApproved(host)) throw invalid(&quot;This website is not on the approved list.&quot;);</span>
+
+<span class="fc" id="L80">        String path = uri.getRawPath();</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">        if (path == null || path.isEmpty()) path = &quot;/&quot;;</span>
+<span class="fc" id="L82">        String query = uri.getRawQuery();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        return &quot;https://&quot; + host + path + (query == null ? &quot;&quot; : &quot;?&quot; + query);</span>
+    }
+
+    private boolean isApproved(String host) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (String domain : approvedDomains) {</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">            if (host.equals(domain) || host.endsWith(&quot;.&quot; + domain)) return true;</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">        return false;</span>
+    }
+
+    private static String toAsciiHost(String host) {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (host.isEmpty()) throw invalid(&quot;The URL has no host.&quot;);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (host.indexOf('%') &gt;= 0) throw invalid(&quot;The URL host is not valid.&quot;);</span>
+        String ascii;
+        try {
+<span class="fc" id="L98">            ascii = IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES);   // Unicode look-alikes become xn-- and never match</span>
+<span class="fc" id="L99">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L100">            throw invalid(&quot;The URL host is not valid.&quot;);</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc" id="L102">        ascii = ascii.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (ascii.endsWith(&quot;.&quot;)) ascii = ascii.substring(0, ascii.length() - 1);</span>
+<span class="pc bpc" id="L104" title="3 of 6 branches missed.">        if (ascii.isEmpty() || ascii.length() &gt; 253 || !ascii.matches(&quot;[a-z0-9-]+(\\.[a-z0-9-]+)*&quot;)) {</span>
+<span class="nc" id="L105">            throw invalid(&quot;The URL host is not valid.&quot;);</span>
+        }
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (String label : ascii.split(&quot;\\.&quot;)) {</span>
+<span class="pc bpc" id="L108" title="3 of 6 branches missed.">            if (label.length() &gt; 63 || label.startsWith(&quot;-&quot;) || label.endsWith(&quot;-&quot;)) throw invalid(&quot;The URL host is not valid.&quot;);</span>
+        }
+<span class="fc" id="L110">        return ascii;</span>
+    }
+
+    /** Dotted decimal, and the shorthand/hex/octal forms some resolvers accept (127.1, 0x7f.0.0.1, 2130706433). */
+    private static boolean isIpLiteral(String host) {
+<span class="fc" id="L115">        return host.matches(&quot;(0x[0-9a-f]+|[0-9]+)(\\.(0x[0-9a-f]+|[0-9]+)){0,3}&quot;);</span>
+    }
+
+<span class="fc" id="L118">    private static InvalidInputException invalid(String message) { return new InvalidInputException(message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

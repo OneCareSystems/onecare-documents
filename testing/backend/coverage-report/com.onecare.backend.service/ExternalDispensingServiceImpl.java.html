@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalDispensingServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">ExternalDispensingServiceImpl.java</span></div><h1>ExternalDispensingServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.CreateExternalDispensingRequest;
+import com.onecare.backend.dto.request.ExternalDispensingItemRequest;
+import com.onecare.backend.dto.request.StockUpdateRequest;
+import com.onecare.backend.dto.request.VerifyExternalDispensingRequest;
+import com.onecare.backend.dto.response.ExternalDispensingResponse;
+import com.onecare.backend.entity.*;
+import com.onecare.backend.enums.DeliveryMethod;
+import com.onecare.backend.enums.PrescriptionStatus;
+import com.onecare.backend.enums.Status;
+import com.onecare.backend.exception.BusinessRuleException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.*;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+@Service
+@Transactional
+public class ExternalDispensingServiceImpl implements ExternalDispensingService {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(ExternalDispensingServiceImpl.class);</span>
+
+    private final ExternalDispensingRepository externalDispensingRepository;
+    private final PrescriptionRepository prescriptionRepository;
+    private final MedicineRepository medicineRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final MedicineService medicineService;
+
+    public ExternalDispensingServiceImpl(
+            ExternalDispensingRepository externalDispensingRepository,
+            PrescriptionRepository prescriptionRepository,
+            MedicineRepository medicineRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AuditLogRepository auditLogRepository,
+<span class="fc" id="L49">            MedicineService medicineService) {</span>
+
+<span class="fc" id="L51">        this.externalDispensingRepository = externalDispensingRepository;</span>
+<span class="fc" id="L52">        this.prescriptionRepository = prescriptionRepository;</span>
+<span class="fc" id="L53">        this.medicineRepository = medicineRepository;</span>
+<span class="fc" id="L54">        this.patientRepository = patientRepository;</span>
+<span class="fc" id="L55">        this.userRepository = userRepository;</span>
+<span class="fc" id="L56">        this.auditLogRepository = auditLogRepository;</span>
+<span class="fc" id="L57">        this.medicineService = medicineService;</span>
+<span class="fc" id="L58">    }</span>
+
+    @Override
+    @Audited(action = &quot;PRESCRIPTION_MARK_EXTERNAL&quot;, module = &quot;PRESCRIPTION&quot;)
+    public ExternalDispensingResponse markPrescriptionExternal(Long prescriptionId) {
+
+<span class="fc" id="L64">        Prescription prescription = prescriptionRepository.findById(prescriptionId)</span>
+<span class="pc" id="L65">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Prescription not found with id: &quot; + prescriptionId));
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (prescription.getStatus() != PrescriptionStatus.ISSUED) {</span>
+<span class="fc" id="L69">            throw new BusinessRuleException(</span>
+                    &quot;Only ISSUED prescriptions can be marked for external dispensing. &quot;
+                            + &quot;Prescription id: &quot; + prescriptionId
+<span class="fc" id="L72">                            + &quot; has status: &quot; + prescription.getStatus());</span>
+        }
+
+<span class="fc" id="L75">        ExternalDispensing event = new ExternalDispensing();</span>
+
+<span class="fc" id="L77">        event.setPrescription(prescription);</span>
+
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (prescription.getPatient() != null) {</span>
+<span class="fc" id="L80">            event.setPatientId(prescription.getPatient().getPatientId());</span>
+        }
+
+<span class="fc" id="L83">        event.setStatus(Status.PENDING);</span>
+<span class="fc" id="L84">        event.setVerificationStatus(&quot;PENDING&quot;);</span>
+<span class="fc" id="L85">        event.setRetryCount(0);</span>
+<span class="fc" id="L86">        event.setVerifiedAt(null);</span>
+
+<span class="fc" id="L88">        event.setVerificationMethod(&quot;PHONE&quot;);</span>
+<span class="fc" id="L89">        event.setDeliveryMethod(DeliveryMethod.PICK_UP);</span>
+
+<span class="fc" id="L91">        LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L92">        event.setDispenseDate(now);</span>
+<span class="fc" id="L93">        event.setDispensedAt(now);</span>
+
+<span class="fc" id="L95">        ExternalDispensing saved = externalDispensingRepository.save(event);</span>
+
+<span class="fc" id="L97">        log.info(</span>
+                &quot;Prescription marked for external dispensing | prescriptionId={} | dispenseId={}&quot;,
+                prescriptionId,
+<span class="fc" id="L100">                saved.getDispenseId());</span>
+
+<span class="fc" id="L102">        return ExternalDispensingResponse.from(saved);</span>
+    }
+
+    @Override
+    @Audited(
+    action = &quot;EXTERNAL_DISPENSING_CREATED&quot;,
+    module = &quot;ExternalDispensing&quot;
+)
+    public ExternalDispensingResponse createExternalDispensing(CreateExternalDispensingRequest request) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (request == null) {</span>
+<span class="fc" id="L112">            throw new BusinessRuleException(&quot;External dispensing request is required&quot;);</span>
+        }
+
+<span class="fc" id="L115">        Prescription prescription = null;</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (request.prescriptionId() != null) {</span>
+<span class="fc" id="L117">            prescription = prescriptionRepository.findById(request.prescriptionId())</span>
+<span class="pc" id="L118">                    .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="nc" id="L119">                            &quot;Prescription not found with id: &quot; + request.prescriptionId()));</span>
+        }
+
+<span class="fc" id="L122">        Long patientId = request.patientId();</span>
+<span class="pc bpc" id="L123" title="5 of 6 branches missed.">        if (patientId == null &amp;&amp; prescription != null &amp;&amp; prescription.getPatient() != null) {</span>
+<span class="nc" id="L124">            patientId = prescription.getPatient().getPatientId();</span>
+        }
+
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (patientId != null) {</span>
+<span class="fc" id="L128">            final Long patientLookupId = patientId;</span>
+<span class="fc" id="L129">            Patient patient = patientRepository.findById(patientLookupId)</span>
+<span class="pc" id="L130">                    .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                            &quot;Patient not found with id: &quot; + patientLookupId));
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (!Boolean.TRUE.equals(patient.getIsActive())) {</span>
+<span class="fc" id="L133">                throw new BusinessRuleException(&quot;Patient is not active with id: &quot; + patientLookupId);</span>
+            }
+        }
+
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">        if (request.items() == null || request.items().isEmpty()) {</span>
+<span class="nc" id="L138">            throw new BusinessRuleException(&quot;At least one dispensed item is required&quot;);</span>
+        }
+
+<span class="fc" id="L141">        String verificationMethod = normalizeVerificationMethod(request.verificationMethod());</span>
+<span class="fc" id="L142">        DeliveryMethod deliveryMethod = resolveDeliveryMethod(request.deliveryMethod());</span>
+
+<span class="fc" id="L144">        ExternalDispensing event = new ExternalDispensing();</span>
+<span class="fc" id="L145">        event.setPrescription(prescription);</span>
+<span class="fc" id="L146">        event.setPatientId(patientId);</span>
+<span class="fc" id="L147">        event.setVerificationMethod(verificationMethod);</span>
+<span class="fc" id="L148">        event.setVerificationStatus(&quot;PENDING&quot;);</span>
+<span class="fc" id="L149">        event.setStatus(Status.PENDING);</span>
+<span class="fc" id="L150">        event.setDeliveryMethod(deliveryMethod);</span>
+<span class="fc" id="L151">        LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L152">        event.setDispenseDate(now);</span>
+<span class="fc" id="L153">        event.setDispensedAt(now);</span>
+<span class="fc" id="L154">        event.setRetryCount(0);</span>
+<span class="fc" id="L155">        event.setVerifiedAt(null);</span>
+
+<span class="fc" id="L157">        List&lt;DispensingItem&gt; items = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L158">        final Prescription prescriptionForItems = prescription;</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (ExternalDispensingItemRequest itemRequest : request.items()) {</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            if (itemRequest == null) {</span>
+<span class="nc" id="L161">                continue;</span>
+            }
+
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            int quantity = itemRequest.quantity() == null ? 0 : itemRequest.quantity();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (quantity &lt;= 0) {</span>
+<span class="fc" id="L166">                throw new BusinessRuleException(&quot;Quantity must be greater than zero&quot;);</span>
+            }
+
+<span class="fc" id="L169">            DispensingItem item = new DispensingItem();</span>
+<span class="fc" id="L170">            item.setDispensing(event);</span>
+<span class="fc" id="L171">            item.setQuantityDispensed(quantity);</span>
+
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (itemRequest.prescriptionItemId() != null) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                PrescriptionItem prescriptionItem = prescriptionForItems != null</span>
+<span class="nc" id="L175">                        ? prescriptionForItems.getItems().stream()</span>
+<span class="nc" id="L176">                                .filter(pi -&gt; Objects.equals(pi.getItemId(), itemRequest.prescriptionItemId()))</span>
+<span class="nc" id="L177">                                .findFirst().orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="nc" id="L178">                                        &quot;Prescription item not found with id: &quot; + itemRequest.prescriptionItemId()))</span>
+<span class="nc" id="L179">                        : null;</span>
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (prescriptionItem != null) {</span>
+<span class="nc" id="L182">                    item.setPrescriptionItem(prescriptionItem);</span>
+<span class="nc" id="L183">                    item.setMedicine(prescriptionItem.getMedicine());</span>
+<span class="nc bnc" id="L184" title="All 4 branches missed.">                    if (item.getMedicine() == null &amp;&amp; itemRequest.medicineId() != null) {</span>
+<span class="nc" id="L185">                        item.setMedicine(medicineRepository.findById(itemRequest.medicineId())</span>
+<span class="nc" id="L186">                                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="nc" id="L187">                                        &quot;Medicine not found with id: &quot; + itemRequest.medicineId())));</span>
+                    }
+                }
+            }
+
+<span class="pc bpc" id="L192" title="2 of 4 branches missed.">            if (item.getMedicine() == null &amp;&amp; itemRequest.medicineId() != null) {</span>
+<span class="fc" id="L193">                Medicine medicine = medicineRepository.findById(itemRequest.medicineId())</span>
+<span class="pc" id="L194">                        .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="nc" id="L195">                                &quot;Medicine not found with id: &quot; + itemRequest.medicineId()));</span>
+<span class="fc" id="L196">                item.setMedicine(medicine);</span>
+            }
+
+<span class="pc bpc" id="L199" title="3 of 4 branches missed.">            if (item.getMedicine() == null &amp;&amp; itemRequest.medicineName() != null) {</span>
+<span class="nc" id="L200">                throw new BusinessRuleException(&quot;Medicine identifier is required for dispensed products&quot;);</span>
+            }
+
+<span class="fc" id="L203">            items.add(item);</span>
+<span class="fc" id="L204">        }</span>
+
+<span class="fc" id="L206">        event.setItems(items);</span>
+<span class="fc" id="L207">        ExternalDispensing saved = externalDispensingRepository.save(event);</span>
+
+        // Optional&lt;User&gt; actor = resolveCurrentUser();
+        // if (actor.isPresent()) {
+        //     recordAudit(actor.get(), &quot;EXTERNAL_DISPENSING_CREATED&quot;, &quot;ExternalDispensing&quot;,
+        //             String.valueOf(saved.getDispenseId()),
+        //             &quot;Created pending external dispensing event&quot;);
+        // }
+
+<span class="fc" id="L216">        log.info(&quot;External dispensing created | dispenseId={} | patientId={} | prescriptionId={} | items={}&quot;,</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                saved.getDispenseId(), patientId, prescription != null ? prescription.getPrescriptionId() : null,</span>
+<span class="fc" id="L218">                saved.getItems().size());</span>
+<span class="fc" id="L219">        return ExternalDispensingResponse.from(saved);</span>
+    }
+
+    @Override
+    @Audited(
+    action = &quot;EXTERNAL_DISPENSING_VERIFIED&quot;,
+    module = &quot;ExternalDispensing&quot;
+)
+    public ExternalDispensingResponse verifyExternalDispensing(Long dispenseId,
+            VerifyExternalDispensingRequest request) {
+<span class="fc" id="L229">        ExternalDispensing event = findByIdInternal(dispenseId);</span>
+<span class="fc bfc" id="L230" title="All 4 branches covered.">        if (event.getStatus() == Status.CANCELLED || event.getStatus() == Status.DISPENSED) {</span>
+<span class="fc" id="L231">            throw new BusinessRuleException(&quot;Only pending external dispensing events can be verified&quot;);</span>
+        }
+
+<span class="pc bpc" id="L234" title="3 of 6 branches missed.">        if (request != null &amp;&amp; request.verificationMethod() != null &amp;&amp; !request.verificationMethod().isBlank()) {</span>
+<span class="fc" id="L235">            event.setVerificationMethod(normalizeVerificationMethod(request.verificationMethod()));</span>
+        }
+
+<span class="pc bpc" id="L238" title="3 of 6 branches missed.">        if (request != null &amp;&amp; request.verified() != null &amp;&amp; !request.verified()) {</span>
+<span class="nc" id="L239">            throw new BusinessRuleException(&quot;External dispensing verification rejected&quot;);</span>
+        }
+
+<span class="fc" id="L242">        event.setVerificationStatus(&quot;VERIFIED&quot;);</span>
+<span class="fc" id="L243">        event.setVerifiedAt(LocalDateTime.now());</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        event.setRetryCount(event.getRetryCount() == null ? 1 : event.getRetryCount() + 1);</span>
+
+<span class="fc" id="L246">        ExternalDispensing saved = externalDispensingRepository.save(event);</span>
+
+        // Optional&lt;User&gt; actor = resolveCurrentUser();
+        // if (actor.isPresent()) {
+        //     recordAudit(actor.get(), &quot;EXTERNAL_DISPENSING_VERIFIED&quot;, &quot;ExternalDispensing&quot;,
+        //             String.valueOf(saved.getDispenseId()),
+        //             &quot;External dispensing identity verification completed&quot;);
+        // }
+
+<span class="fc" id="L255">        return ExternalDispensingResponse.from(saved);</span>
+    }
+
+    @Override
+    @Audited(
+    action = &quot;EXTERNAL_DISPENSING_VERIFIED&quot;,
+    module = &quot;ExternalDispensing&quot;
+)
+    public ExternalDispensingResponse completeExternalDispensing(Long dispenseId) {
+<span class="fc" id="L264">        ExternalDispensing event = findByIdInternal(dispenseId);</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (event.getStatus() == Status.DISPENSED) {</span>
+<span class="fc" id="L266">            throw new BusinessRuleException(&quot;External dispensing has already been completed&quot;);</span>
+        }
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (event.getStatus() == Status.CANCELLED) {</span>
+<span class="fc" id="L269">            throw new BusinessRuleException(&quot;Cancelled external dispensing cannot be completed&quot;);</span>
+        }
+<span class="pc bpc" id="L271" title="1 of 4 branches missed.">        if (event.getVerificationStatus() == null || !&quot;VERIFIED&quot;.equalsIgnoreCase(event.getVerificationStatus())) {</span>
+<span class="fc" id="L272">            throw new BusinessRuleException(&quot;External dispensing must be verified before completion&quot;);</span>
+        }
+
+<span class="fc" id="L275">        boolean partiallyDispensed = false;</span>
+
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        for (DispensingItem item : event.getItems()) {</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">            if (item == null) {</span>
+<span class="nc" id="L279">                continue;</span>
+            }
+
+<span class="fc" id="L282">            Medicine medicine = item.getMedicine();</span>
+<span class="pc bpc" id="L283" title="3 of 4 branches missed.">            if (medicine == null &amp;&amp; item.getPrescriptionItem() != null</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">                    &amp;&amp; item.getPrescriptionItem().getMedicine() != null) {</span>
+<span class="nc" id="L285">                medicine = item.getPrescriptionItem().getMedicine();</span>
+            }
+
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">            if (medicine == null) {</span>
+<span class="nc" id="L289">                throw new BusinessRuleException(&quot;Medicine is required for each dispensed item&quot;);</span>
+            }
+
+<span class="fc" id="L292">            int requestedQuantity = Math.max(0, item.getQuantityDispensed());</span>
+<span class="fc" id="L293">            int quantityToDispense = DispensingRules.quantityToDispense(requestedQuantity, medicine.getStockQuantity());</span>
+
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (quantityToDispense &gt; 0) {</span>
+<span class="fc" id="L296">                medicineService.updateStock(</span>
+<span class="fc" id="L297">                        medicine.getMedicineId(),</span>
+<span class="fc" id="L298">                        new StockUpdateRequest(-quantityToDispense));</span>
+            }
+
+<span class="fc" id="L301">            item.setQuantityDispensed(quantityToDispense);</span>
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">            if (quantityToDispense &lt; requestedQuantity) {</span>
+<span class="fc" id="L304">                partiallyDispensed = true;</span>
+            }
+<span class="fc" id="L306">        }</span>
+
+<span class="pc bpc" id="L308" title="1 of 4 branches missed.">        if (event.getPrescription() != null &amp;&amp; !partiallyDispensed) {</span>
+<span class="fc" id="L309">            Prescription prescription = event.getPrescription();</span>
+
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">            if (prescription.getStatus() != PrescriptionStatus.DISPENSED) {</span>
+<span class="fc" id="L312">                prescription.setStatus(PrescriptionStatus.DISPENSED);</span>
+<span class="fc" id="L313">                prescriptionRepository.save(prescription);</span>
+            }
+        }
+
+<span class="fc" id="L317">        event.setStatus(</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">                partiallyDispensed</span>
+<span class="fc" id="L319">                        ? Status.PARTIALLY_DISPENSED</span>
+<span class="fc" id="L320">                        : Status.DISPENSED);</span>
+<span class="fc" id="L321">        event.setDispensedAt(LocalDateTime.now());</span>
+<span class="fc" id="L322">        event.setVerificationStatus(&quot;VERIFIED&quot;);</span>
+<span class="fc" id="L323">        event = externalDispensingRepository.save(event);</span>
+
+        // Optional&lt;User&gt; actor = resolveCurrentUser();
+        // if (actor.isPresent()) {
+        //     recordAudit(actor.get(), &quot;EXTERNAL_DISPENSING_COMPLETED&quot;, &quot;ExternalDispensing&quot;,
+        //             String.valueOf(event.getDispenseId()),
+        //             &quot;External dispensing completed and stock decremented&quot;);
+        // }
+
+<span class="fc" id="L332">        log.info(&quot;External dispensing completed | dispenseId={} | prescriptionId={} | stockUpdated={}&quot;,</span>
+<span class="fc" id="L333">                event.getDispenseId(),</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">                event.getPrescription() != null ? event.getPrescription().getPrescriptionId() : null,</span>
+<span class="fc" id="L335">                event.getItems().size());</span>
+
+<span class="fc" id="L337">        return ExternalDispensingResponse.from(event);</span>
+    }
+
+    @Override
+    public List&lt;ExternalDispensingResponse&gt; findAllExternalDispensing(String status) {
+        List&lt;ExternalDispensing&gt; items;
+<span class="pc bpc" id="L343" title="1 of 4 branches missed.">        if (status == null || status.isBlank()) {</span>
+<span class="fc" id="L344">            items = externalDispensingRepository.findAll();</span>
+        } else {
+            try {
+<span class="fc" id="L347">                Status filter = Status.valueOf(status.trim().toUpperCase());</span>
+<span class="fc" id="L348">                items = externalDispensingRepository.findAll().stream()</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">                        .filter(event -&gt; event.getStatus() == filter)</span>
+<span class="fc" id="L350">                        .toList();</span>
+<span class="fc" id="L351">            } catch (IllegalArgumentException ex) {</span>
+<span class="fc" id="L352">                throw new BusinessRuleException(</span>
+                        &quot;Invalid status filter: &quot; + status
+                                + &quot;. Allowed values: PENDING, DISPENSED, PARTIALLY_DISPENSED, CANCELLED&quot;);
+<span class="fc" id="L355">            }</span>
+        }
+<span class="fc" id="L357">        return items.stream().map(ExternalDispensingResponse::from).toList();</span>
+    }
+
+    @Override
+    public ExternalDispensingResponse findExternalDispensingById(Long dispenseId) {
+<span class="fc" id="L362">        return ExternalDispensingResponse.from(findByIdInternal(dispenseId));</span>
+    }
+
+    private ExternalDispensing findByIdInternal(Long dispenseId) {
+<span class="fc" id="L366">        return externalDispensingRepository.findById(dispenseId)</span>
+<span class="fc" id="L367">                .orElseThrow(</span>
+<span class="fc" id="L368">                        () -&gt; new ResourceNotFoundException(&quot;External dispensing not found with id: &quot; + dispenseId));</span>
+    }
+
+    private Optional&lt;User&gt; resolveCurrentUser() {
+<span class="nc" id="L372">        Long userId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">        if (userId != null) {</span>
+<span class="nc" id="L374">            return userRepository.findById(userId);</span>
+        }
+
+<span class="nc" id="L377">        String username = SecurityUtil.getCurrentUsername().orElse(null);</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        if (username != null) {</span>
+<span class="nc" id="L379">            return userRepository.findByUsername(username);</span>
+        }
+
+<span class="nc" id="L382">        return Optional.empty();</span>
+    }
+
+    private void recordAudit(User actor, String action, String entityType, String entityId, String description) {
+<span class="nc bnc" id="L386" title="All 4 branches missed.">        if (actor == null || actor.getUserId() == null) {</span>
+<span class="nc" id="L387">            return;</span>
+        }
+
+<span class="nc" id="L390">        AuditLog audit = new AuditLog();</span>
+<span class="nc" id="L391">        audit.setUser(actor);</span>
+<span class="nc" id="L392">        audit.setAction(action);</span>
+<span class="nc" id="L393">        audit.setActionType(&quot;DOMAIN_EVENT&quot;);</span>
+<span class="nc" id="L394">        audit.setEntityType(entityType);</span>
+<span class="nc" id="L395">        audit.setEntityId(entityId);</span>
+<span class="nc" id="L396">        audit.setDescription(description);</span>
+<span class="nc" id="L397">        audit.setTimestamp(LocalDateTime.now());</span>
+<span class="nc" id="L398">        audit.setIpAddress(null);</span>
+<span class="nc" id="L399">        AuditLog savedAudit = auditLogRepository.save(audit);</span>
+
+<span class="nc" id="L401">        Optional&lt;ExternalDispensing&gt; event = externalDispensingRepository.findById(Long.valueOf(entityId));</span>
+<span class="nc" id="L402">        event.ifPresent(existing -&gt; {</span>
+<span class="nc" id="L403">            existing.setAuditLog(savedAudit);</span>
+<span class="nc" id="L404">            externalDispensingRepository.save(existing);</span>
+<span class="nc" id="L405">        });</span>
+<span class="nc" id="L406">    }</span>
+
+    private String normalizeVerificationMethod(String method) {
+<span class="pc bpc" id="L409" title="2 of 4 branches missed.">        if (method == null || method.isBlank()) {</span>
+<span class="nc" id="L410">            return &quot;PHONE&quot;;</span>
+        }
+<span class="fc" id="L412">        return method.trim().toUpperCase();</span>
+    }
+
+    private DeliveryMethod resolveDeliveryMethod(String deliveryMethod) {
+<span class="pc bpc" id="L416" title="2 of 4 branches missed.">        if (deliveryMethod == null || deliveryMethod.isBlank()) {</span>
+<span class="nc" id="L417">            return DeliveryMethod.PICK_UP;</span>
+        }
+        try {
+<span class="fc" id="L420">            return DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase());</span>
+<span class="nc" id="L421">        } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L422">            throw new BusinessRuleException(</span>
+                    &quot;Invalid deliveryMethod: &quot; + deliveryMethod + &quot;. Allowed values: PICK_UP, DELIVERY&quot;);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

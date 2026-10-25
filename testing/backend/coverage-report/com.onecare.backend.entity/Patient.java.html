@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Patient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.entity</a> &gt; <span class="el_source">Patient.java</span></div><h1>Patient.java</h1><pre class="source lang-java linenums">package com.onecare.backend.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import com.onecare.backend.enums.Gender;
+import com.onecare.backend.util.PhoneNumberUtil;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = &quot;patients&quot;)
+public class Patient {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name=&quot;patient_id&quot;)
+    private Long patientId;
+
+    @Column(name = &quot;full_name&quot;, nullable = false, length = 500)
+    private String fullName;
+
+    @Column(name = &quot;date_of_birth&quot;, nullable = false)
+    private LocalDate dateOfBirth;
+    
+    @Column(name = &quot;address&quot;, length = 255)
+    private String address;
+
+    @Column(name = &quot;contact_no&quot;, nullable = false, length = 20)
+    private String contactNo;
+
+    @Column(name = &quot;email&quot;, length = 100)
+    private String email;
+
+    @Column(name=&quot;blood_group&quot; , length=10)
+    private String bloodGroup;
+
+    @Column(name=&quot;created_at&quot;,nullable=false ,updatable=false)
+    private LocalDateTime createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private LocalDateTime updatedAt;
+
+    @Column(name = &quot;isActive&quot;, nullable = false)
+    private Boolean isActive;    
+
+    @Enumerated(EnumType.STRING)
+    @Column(name=&quot;gender&quot;,length=10)
+    private Gender gender;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="fc" id="L56">    contactNo = PhoneNumberUtil.canonicalPhone(contactNo);</span>
+<span class="fc" id="L57">    createdAt = LocalDateTime.now();</span>
+<span class="fc" id="L58">    updatedAt = LocalDateTime.now();</span>
+<span class="fc" id="L59">    }</span>
+
+    @PreUpdate
+    protected void onUpdate() {
+    // Also migrates a legacy spaced row to the canonical format on its first update.
+<span class="fc" id="L64">    contactNo = PhoneNumberUtil.canonicalPhone(contactNo);</span>
+<span class="fc" id="L65">    updatedAt = LocalDateTime.now();</span>
+<span class="fc" id="L66">    }</span>
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

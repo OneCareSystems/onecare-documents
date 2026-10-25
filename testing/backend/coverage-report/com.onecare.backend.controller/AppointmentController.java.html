@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AppointmentController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">AppointmentController.java</span></div><h1>AppointmentController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.CreateAppointmentRequest;
+import com.onecare.backend.dto.request.UpdateAppointmentRequest;
+import com.onecare.backend.dto.response.AppointmentClinicalNotesResponse;
+import com.onecare.backend.dto.response.AppointmentResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.AppointmentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Tag(name = &quot;Appointments&quot;, description = &quot;Appointment management APIs&quot;)
+@RestController
+@RequestMapping(&quot;/api/appointments&quot;)
+public class AppointmentController {
+
+    private final AppointmentService appointmentService;
+
+<span class="fc" id="L29">    public AppointmentController(AppointmentService appointmentService) {</span>
+<span class="fc" id="L30">        this.appointmentService = appointmentService;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Operation(summary = &quot;Create appointment&quot;,
+            description = &quot;Create a new appointment booking. clinicalNotes is optional and &quot;
+                    + &quot;only accepted from doctors (APPOINTMENT_WRITE_CLINICAL_NOTES).&quot;)
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;AppointmentResponse&gt;&gt; createAppointment(
+            @Valid @RequestBody CreateAppointmentRequest request) {
+<span class="fc" id="L40">        AppointmentResponse response = appointmentService.createAppointment(request);</span>
+<span class="fc" id="L41">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L42">                .body(new ApiResponse&lt;&gt;(true, &quot;Appointment created successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;List appointments&quot;,
+            description = &quot;Return authorized appointment records. Optionally filter by date: &quot;
+                    + &quot;?date=YYYY-MM-DD returns one day; ?from=YYYY-MM-DD&amp;to=YYYY-MM-DD returns an &quot;
+                    + &quot;inclusive range (each side optional), and by patient with ?search=... &quot;
+                    + &quot;(partial case-insensitive name or exact contact number, same as the patient &quot;
+                    + &quot;search). Filters combine; with no params every record is returned. &quot;
+                    + &quot;Combining date with from/to, or from after to, returns 400.&quot;)
+    @GetMapping
+        @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_READ_ALL + &quot;') or hasAuthority('&quot;
+            + Permission.APPOINTMENT_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;List&lt;AppointmentResponse&gt;&gt;&gt; listAppointments(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String search) {
+<span class="fc" id="L60">        List&lt;AppointmentResponse&gt; appointments = appointmentService.listAppointments(date, from, to, search);</span>
+<span class="fc" id="L61">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Appointments retrieved successfully&quot;, appointments));</span>
+    }
+
+    @Operation(summary = &quot;List today's appointments&quot;,
+            description = &quot;Returns the caller's authorized appointments scheduled for today, &quot;
+                    + &quot;ordered by time slot. Admins see all, doctors their own. &quot;
+                    + &quot;Clinical notes follow the usual rules (Doctor own appointments only).&quot;)
+    @GetMapping(&quot;/today&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_READ_ALL + &quot;') or hasAuthority('&quot;
+            + Permission.APPOINTMENT_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;List&lt;AppointmentResponse&gt;&gt;&gt; findTodaysAppointments() {
+<span class="fc" id="L72">        List&lt;AppointmentResponse&gt; appointments = appointmentService.findTodaysAppointments();</span>
+<span class="fc" id="L73">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Today's appointments retrieved successfully&quot;, appointments));
+    }
+
+    @Operation(summary = &quot;Get appointment by ID&quot;,
+            description = &quot;Returns a single appointment WITHOUT clinical notes. &quot;
+                    + &quot;Admins see any appointment; doctors only their own. &quot;
+                    + &quot;Clinical notes are available via GET /api/appointments/{id}/clinical-notes. &quot;
+                    + &quot;Returns 404 when the appointment does not exist.&quot;)
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_READ_ALL + &quot;') or hasAuthority('&quot;
+            + Permission.APPOINTMENT_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;AppointmentResponse&gt;&gt; getAppointmentById(@PathVariable Long id) {
+<span class="fc" id="L86">        AppointmentResponse response = appointmentService.getAppointmentById(id);</span>
+<span class="fc" id="L87">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Appointment retrieved successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Update appointment&quot;,
+            description = &quot;Reschedule or update an appointment. clinicalNotes is optional &quot;
+                    + &quot;(null keeps the current notes) and only accepted from doctors &quot;
+                    + &quot;(APPOINTMENT_WRITE_CLINICAL_NOTES).&quot;)
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;AppointmentResponse&gt;&gt; updateAppointment(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAppointmentRequest request) {
+<span class="fc" id="L99">        AppointmentResponse response = appointmentService.updateAppointment(id, request);</span>
+<span class="fc" id="L100">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Appointment updated successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;Get appointment clinical notes&quot;,
+            description = &quot;Returns the clinical notes stored on the appointment. &quot;
+                    + &quot;Requires APPOINTMENT_READ_CLINICAL_NOTES (Doctor only, Table 9 / AC4); &quot;
+                    + &quot;a doctor may only read notes of appointments assigned to them. &quot;
+                    + &quot;Admin, Super Admin and Pharmacist callers are denied with 403. &quot;
+                    + &quot;Returns 404 for an unknown appointment.&quot;)
+    @GetMapping(&quot;/{id}/clinical-notes&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_READ_CLINICAL_NOTES + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;AppointmentClinicalNotesResponse&gt;&gt; getClinicalNotes(@PathVariable Long id) {
+<span class="fc" id="L113">        AppointmentClinicalNotesResponse response = appointmentService.getClinicalNotes(id);</span>
+<span class="fc" id="L114">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Clinical notes retrieved successfully&quot;, response));
+    }
+
+    @Operation(summary = &quot;Cancel appointment&quot;, description = &quot;Cancel an appointment&quot;)
+    @PatchMapping(&quot;/{id}/cancel&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.APPOINTMENT_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;AppointmentResponse&gt;&gt; cancelAppointment(@PathVariable Long id) {
+<span class="nc" id="L122">        AppointmentResponse response = appointmentService.cancelAppointment(id);</span>
+<span class="nc" id="L123">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Appointment cancelled successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Get available appointment slots&quot;,
+            description = &quot;Return available 30-minute appointment slots for a selected doctor &quot;
+                    + &quot;and date. Public (FR043/AC6): reachable without a JWT as part of the &quot;
+                    + &quot;patient self-service booking flow and rate limited per IP.&quot;)
+    @GetMapping(&quot;/available-slots&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;List&lt;String&gt;&gt;&gt; getAvailableSlots(
+            @RequestParam Long doctorId,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+<span class="fc" id="L134">        List&lt;String&gt; slots = appointmentService.getAvailableSlots(doctorId, date);</span>
+<span class="fc" id="L135">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Available slots retrieved successfully&quot;, slots));</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

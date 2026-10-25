@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PhoneNumberUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.util</a> &gt; <span class="el_source">PhoneNumberUtil.java</span></div><h1>PhoneNumberUtil.java</h1><pre class="source lang-java linenums">package com.onecare.backend.util;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Utility for validating and normalizing Sri Lankan phone numbers.
+ *
+ * &lt;p&gt;The &lt;b&gt;canonical storage format&lt;/b&gt; is separator-free E.164 style:
+ * {@code +94771234567}. This is the format the {@code chk_patient_contact_no}
+ * CHECK constraint on {@code patients.contact_no} enforces, so every write
+ * path must persist numbers in this form regardless of how the caller typed
+ * them ({@code 0771234567}, {@code +94 771 234 567}, {@code 94771234567}, ...).&lt;/p&gt;
+ *
+ * &lt;p&gt;The legacy spaced format {@code +94 771 234 567} (used before the
+ * constraint was introduced) is still understood by {@link #lookupVariants} and
+ * {@link #legacySpacedFormat} so already-stored rows keep matching during
+ * lookups and searches.&lt;/p&gt;
+ */
+public final class PhoneNumberUtil {
+
+<span class="fc" id="L24">    private static final Pattern SL_PHONE_PATTERN = Pattern.compile(&quot;^(\\+94|0094|94|0)?([1-9]\\d{8})$&quot;);</span>
+
+    private PhoneNumberUtil() {}
+
+    /**
+     * Checks if the given string represents a valid Sri Lankan phone number.
+     * Accepts formats such as 0771234567, +94771234567, +94 771 234 567, 94771234567.
+     */
+    public static boolean isValidSriLankanPhone(String phone) {
+<span class="pc bpc" id="L33" title="2 of 4 branches missed.">        if (phone == null || phone.isBlank()) {</span>
+<span class="nc" id="L34">            return false;</span>
+        }
+<span class="fc" id="L36">        String cleaned = phone.replaceAll(&quot;[\\s\\-\\(\\)]&quot;, &quot;&quot;);</span>
+<span class="fc" id="L37">        return SL_PHONE_PATTERN.matcher(cleaned).matches();</span>
+    }
+
+    /**
+     * Normalizes a Sri Lankan phone number into the canonical storage format:
+     * {@code +94771234567} (no separators — matches {@code chk_patient_contact_no}).
+     * If the input is not a recognized Sri Lankan number, the trimmed input is returned.
+     */
+    public static String normalizeSriLankanPhone(String phone) {
+<span class="pc bpc" id="L46" title="2 of 4 branches missed.">        if (phone == null || phone.isBlank()) {</span>
+<span class="nc" id="L47">            return phone;</span>
+        }
+<span class="fc" id="L49">        String cleaned = phone.replaceAll(&quot;[\\s\\-\\(\\)]&quot;, &quot;&quot;);</span>
+<span class="fc" id="L50">        Matcher matcher = SL_PHONE_PATTERN.matcher(cleaned);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (matcher.matches()) {</span>
+<span class="fc" id="L52">            return &quot;+94&quot; + matcher.group(2);</span>
+        }
+<span class="nc" id="L54">        return phone.trim();</span>
+    }
+
+    /**
+     * Normalizes into the legacy spaced format {@code +94 771 234 567}.
+     * Only needed to keep matching rows persisted before the canonical format was
+     * introduced; never use it for new writes. Returns the trimmed input when the
+     * value is not a recognized Sri Lankan number.
+     */
+    public static String legacySpacedFormat(String phone) {
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (phone == null || phone.isBlank()) {</span>
+<span class="nc" id="L65">            return phone;</span>
+        }
+<span class="fc" id="L67">        String nineDigits = extractNineDigits(phone);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (nineDigits == null) {</span>
+<span class="nc" id="L69">            return phone.trim();</span>
+        }
+<span class="fc" id="L71">        return &quot;+94 &quot; + nineDigits.substring(0, 3) + &quot; &quot;</span>
+<span class="fc" id="L72">                + nineDigits.substring(3, 6) + &quot; &quot; + nineDigits.substring(6, 9);</span>
+    }
+
+    /**
+     * Value to persist: the canonical form when the input is a recognized Sri Lankan
+     * number, otherwise the trimmed input. Never throws — malformed values are left
+     * for the database constraint to reject.
+     */
+    public static String canonicalPhone(String phone) {
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (phone == null) {</span>
+<span class="nc" id="L82">            return null;</span>
+        }
+<span class="fc" id="L84">        String trimmed = phone.trim();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        return isValidSriLankanPhone(trimmed) ? normalizeSriLankanPhone(trimmed) : trimmed;</span>
+    }
+
+    /**
+     * Every stored-format variant worth matching against when a caller supplies a
+     * phone number: canonical first, then the legacy spaced form, then the value as
+     * typed (which may be a legacy raw {@code 0771234567} row), then the local
+     * 10-digit form. Duplicates are removed while preserving that order.
+     *
+     * &lt;p&gt;Returns an empty list for {@code null} and a single-element list for values
+     * that are not phone numbers at all, so plain text searches behave unchanged.&lt;/p&gt;
+     */
+    public static List&lt;String&gt; lookupVariants(String phone) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (phone == null) {</span>
+<span class="nc" id="L99">            return List.of();</span>
+        }
+<span class="fc" id="L101">        String trimmed = phone.trim();</span>
+<span class="fc" id="L102">        LinkedHashSet&lt;String&gt; variants = new LinkedHashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (!trimmed.isEmpty()) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (isValidSriLankanPhone(trimmed)) {</span>
+<span class="fc" id="L105">                variants.add(normalizeSriLankanPhone(trimmed));</span>
+<span class="fc" id="L106">                variants.add(legacySpacedFormat(trimmed));</span>
+            }
+<span class="fc" id="L108">            variants.add(trimmed);</span>
+<span class="fc" id="L109">            String nineDigits = extractNineDigits(trimmed);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (nineDigits != null) {</span>
+<span class="fc" id="L111">                variants.add(&quot;0&quot; + nineDigits);</span>
+            }
+        }
+<span class="fc" id="L114">        return List.copyOf(variants);</span>
+    }
+
+    /**
+     * Extracts the 9 subscriber digits (without leading zero or country code).
+     * e.g., 0771234567 -&gt; 771234567.
+     */
+    public static String extractNineDigits(String phone) {
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">        if (phone == null || phone.isBlank()) {</span>
+<span class="nc" id="L123">            return null;</span>
+        }
+<span class="fc" id="L125">        String cleaned = phone.replaceAll(&quot;[\\s\\-\\(\\)]&quot;, &quot;&quot;);</span>
+<span class="fc" id="L126">        Matcher matcher = SL_PHONE_PATTERN.matcher(cleaned);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (matcher.matches()) {</span>
+<span class="fc" id="L128">            return matcher.group(2);</span>
+        }
+<span class="fc" id="L130">        return null;</span>
+    }
+
+    /**
+     * Validates and normalizes to the canonical storage format.
+     * If invalid, throws IllegalArgumentException.
+     */
+    public static String validateAndNormalize(String phone) {
+<span class="nc bnc" id="L138" title="All 4 branches missed.">        if (phone == null || phone.isBlank()) {</span>
+<span class="nc" id="L139">            throw new IllegalArgumentException(&quot;Contact number is required&quot;);</span>
+        }
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (!isValidSriLankanPhone(phone)) {</span>
+<span class="nc" id="L142">            throw new IllegalArgumentException(</span>
+                    &quot;Invalid Sri Lankan phone number format. Expected format: +94771234567 or standard 10-digit format (e.g. 0771234567)&quot;);
+        }
+<span class="nc" id="L145">        return normalizeSriLankanPhone(phone);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

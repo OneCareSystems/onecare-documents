@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KnowledgeBaseController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.knowledgebase</a> &gt; <span class="el_source">KnowledgeBaseController.java</span></div><h1>KnowledgeBaseController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.knowledgebase;
+
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+import com.onecare.backend.dto.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Map;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.multipart.MultipartFile;
+import com.onecare.backend.chatbot.exception.ChatbotUnavailableException;
+
+
+/**
+ * Chatbot knowledge-base management (upload PDFs / submit links / manage
+ * documents). Delegates storage and indexing to the Django knowledge-base
+ * service; its validation errors (400/404/409/413/415/422) are passed through
+ * with a sanitized message, and any outage surfaces as 503.
+ */
+@Tag(name = &quot;Chatbot Knowledge Base&quot;,
+        description = &quot;Manage the chatbot's knowledge base: upload PDFs, submit approved links, &quot;
+                + &quot;list and delete documents. Requires a login token with the DOCTOR or &quot;
+                + &quot;SUPER_ADMIN role. Writes are audited (module CHATBOT).&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/chatbot/knowledge-base&quot;)
+@PreAuthorize(&quot;hasAnyRole('DOCTOR','SUPER_ADMIN')&quot;)
+public class KnowledgeBaseController {
+    private final KnowledgeBaseService service;
+
+<span class="fc" id="L42">    public KnowledgeBaseController(KnowledgeBaseService service) {</span>
+<span class="fc" id="L43">        this.service = service;</span>
+<span class="fc" id="L44">    }</span>
+
+
+    @Operation(summary = &quot;Upload a PDF to the knowledge base&quot;,
+            description = &quot;multipart/form-data with a PDF 'file' and an optional 'title' &quot;
+                    + &quot;(defaults to the filename downstream). Queued for ingestion — the &quot;
+                    + &quot;returned status reflects the ingestion state (QUEUED/INDEXED/...). &quot;
+                    + &quot;PDF content and size validation is done by the knowledge-base service.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;,
+            description = &quot;PDF accepted and queued for ingestion&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;,
+            description = &quot;Missing or empty file, or the knowledge-base service rejected the document (e.g. not a PDF, too large)&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;415&quot;,
+            description = &quot;Request is not multipart/form-data&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;503&quot;,
+            description = &quot;Knowledge-base service unavailable or timed out&quot;)
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;ApiResponse&lt;KnowledgeDocumentResponse&gt;&gt; uploadPdf(
+            @RequestParam(&quot;file&quot;) MultipartFile file, @RequestParam(defaultValue = &quot;&quot;) String title) {
+<span class="fc" id="L63">        return ResponseEntity.status(201).body(new ApiResponse&lt;&gt;(true, &quot;PDF queued for ingestion&quot;, service.uploadPdf(file, title)));</span>
+    }
+
+    @Operation(summary = &quot;List knowledge-base documents&quot;,
+            description = &quot;Paginated listing, 1-based. Optional 'sourceType' (PDF/LINK) and &quot;
+                    + &quot;'status' (e.g. QUEUED/INDEXED/FAILED) filters. pageSize max 100. &quot;
+                    + &quot;Use 'count' for the total number of matching documents.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;,
+            description = &quot;Page of documents in data.items, totals in data.count/data.totalPages&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;,
+            description = &quot;Invalid pagination (page &lt; 1, pageSize &lt; 1 or &gt; 100)&quot;)
+    @GetMapping
+    public ApiResponse&lt;KnowledgeDocumentPage&gt; list(@RequestParam(defaultValue = &quot;1&quot;) int page,
+            @RequestParam(defaultValue = &quot;20&quot;) int pageSize, @RequestParam(required = false) String sourceType,
+            @RequestParam(required = false) String status) {
+<span class="fc" id="L78">        return new ApiResponse&lt;&gt;(true, &quot;Knowledge base resources retrieved&quot;, service.list(page, pageSize, sourceType, status));</span>
+    }
+
+    @Operation(summary = &quot;Get one knowledge-base document&quot;,
+            description = &quot;Returns ingestion metadata: status, title, source, language, &quot;
+                    + &quot;needsReview, failureReason and who uploaded it.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;,
+            description = &quot;Document found&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;,
+            description = &quot;id must be &gt;= 1&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;,
+            description = &quot;Document not found in the knowledge base&quot;)
+    @GetMapping(&quot;/{id}&quot;)
+    public ApiResponse&lt;KnowledgeDocumentResponse&gt; get(@PathVariable long id) {
+<span class="fc" id="L92">        return new ApiResponse&lt;&gt;(true, &quot;Knowledge base resource retrieved&quot;, service.get(id));</span>
+    }
+
+    @Operation(summary = &quot;Delete a knowledge-base document&quot;,
+            description = &quot;Permanently removes the document from the knowledge base &quot;
+                    + &quot;(chunks and vectors included). Audited as KB_RESOURCE_REMOVED.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;204&quot;,
+            description = &quot;Deleted (no content)&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;,
+            description = &quot;id must be &gt;= 1&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;,
+            description = &quot;Document not found in the knowledge base&quot;)
+    @DeleteMapping(&quot;/{id}&quot;)
+    public ResponseEntity&lt;Void&gt; remove(@PathVariable long id) {
+<span class="fc" id="L106">        service.remove(id);</span>
+<span class="fc" id="L107">        return ResponseEntity.noContent().build();</span>
+    }
+
+    @ExceptionHandler(KnowledgeBaseRequestException.class)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; requestError(KnowledgeBaseRequestException exception) {
+<span class="fc" id="L112">        return ResponseEntity.status(exception.status()).body(new ApiResponse&lt;&gt;(false, exception.getMessage()));</span>
+    }
+
+    @ExceptionHandler(ChatbotUnavailableException.class)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; unavailable(ChatbotUnavailableException exception) {
+<span class="fc" id="L117">        return ResponseEntity.status(503).body(new ApiResponse&lt;&gt;(false, &quot;Knowledge base service is unavailable. Please try again.&quot;));</span>
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; missingFile(org.springframework.web.multipart.support.MissingServletRequestPartException exception) {
+<span class="fc" id="L122">        return ResponseEntity.badRequest().body(new ApiResponse&lt;&gt;(false, &quot;A PDF file is required.&quot;));</span>
+    }
+
+
+    @Operation(summary = &quot;Submit an approved web link for ingestion&quot;,
+            description = &quot;JSON {\&quot;url\&quot;: \&quot;https://...\&quot;}. The URL must be HTTPS on a domain &quot;
+                    + &quot;in the approved allowlist (see ApprovedUrlValidator); rejected URLs are &quot;
+                    + &quot;400 with the validation message. Accepted with 202 — indexing runs &quot;
+                    + &quot;asynchronously in the knowledge-base service.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;202&quot;,
+            description = &quot;Link accepted for ingestion&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;,
+            description = &quot;Missing/non-text 'url', or the URL is not an approved HTTPS domain&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;415&quot;,
+            description = &quot;Content-Type is not application/json&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;503&quot;,
+            description = &quot;Knowledge-base service unavailable or timed out&quot;)
+    @PostMapping(path = &quot;/links&quot;, consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity&lt;ApiResponse&lt;KnowledgeDocumentResponse&gt;&gt; submitLink(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (!(body.get(&quot;url&quot;) instanceof String url)) {</span>
+<span class="nc" id="L143">            throw new InvalidInputException(&quot;A text URL is required.&quot;);</span>
+        }
+<span class="fc" id="L145">        return ResponseEntity.accepted().body(</span>
+<span class="fc" id="L146">                new ApiResponse&lt;&gt;(true, &quot;Knowledge base link submitted&quot;, service.submitLink(url)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

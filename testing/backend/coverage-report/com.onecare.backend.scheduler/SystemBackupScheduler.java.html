@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemBackupScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.scheduler</a> &gt; <span class="el_source">SystemBackupScheduler.java</span></div><h1>SystemBackupScheduler.java</h1><pre class="source lang-java linenums">package com.onecare.backend.scheduler;
+
+import com.onecare.backend.service.BackupService;
+import com.onecare.backend.service.SystemSettingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+
+/**
+ * Runs the automatic monthly backup at end of day (23:59 by default) on the
+ * day of the month configured in system settings. When the configured day
+ * exceeds the current month's length the backup runs on the last day of the
+ * month (e.g. day 31 -&gt; Feb 28/29, Apr 30).
+ */
+@Component
+public class SystemBackupScheduler {
+
+<span class="fc" id="L21">    private static final Logger log = LoggerFactory.getLogger(SystemBackupScheduler.class);</span>
+
+    private final SystemSettingService systemSettingService;
+    private final BackupService backupService;
+
+    public SystemBackupScheduler(SystemSettingService systemSettingService,
+<span class="fc" id="L27">                                 BackupService backupService) {</span>
+<span class="fc" id="L28">        this.systemSettingService = systemSettingService;</span>
+<span class="fc" id="L29">        this.backupService = backupService;</span>
+<span class="fc" id="L30">    }</span>
+
+    /** Daily job at the end of the day; triggers only on the configured day. */
+    @Scheduled(cron = &quot;${backup.monthly.cron:0 59 23 * * ?}&quot;)
+    public void runMonthlyScheduledBackup() {
+<span class="nc" id="L35">        runScheduledBackupIfDue(LocalDate.now());</span>
+<span class="nc" id="L36">    }</span>
+
+    /**
+     * Creates a backup when {@code today} matches the configured day of month
+     * (clamped to the month's length). Returns whether a backup was attempted.
+     * Failures are logged and swallowed so the scheduler survives until the
+     * next run.
+     */
+    public boolean runScheduledBackupIfDue(LocalDate today) {
+<span class="fc" id="L45">        int configuredDay = systemSettingService.getBackupDayOfMonth();</span>
+<span class="fc" id="L46">        int effectiveDay = Math.min(configuredDay, today.lengthOfMonth());</span>
+
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (today.getDayOfMonth() != effectiveDay) {</span>
+<span class="fc" id="L49">            log.debug(&quot;Scheduled backup check | today={} configuredDay={} | not due&quot;,</span>
+<span class="fc" id="L50">                    today, configuredDay);</span>
+<span class="fc" id="L51">            return false;</span>
+        }
+
+<span class="fc" id="L54">        log.info(&quot;Triggering automatic monthly backup | today={} | configuredDay={}&quot;,</span>
+<span class="fc" id="L55">                today, configuredDay);</span>
+        try {
+<span class="fc" id="L57">            backupService.createBackup();</span>
+<span class="fc" id="L58">            return true;</span>
+<span class="fc" id="L59">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L60">            log.error(&quot;Automatic monthly backup failed | today={}&quot;, today, exception);</span>
+<span class="fc" id="L61">            return false;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

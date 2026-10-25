@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HealthConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.config</a> &gt; <span class="el_source">HealthConfig.java</span></div><h1>HealthConfig.java</h1><pre class="source lang-java linenums">package com.onecare.backend.config;
+
+import org.springframework.boot.actuate.health.SimpleStatusAggregator;
+import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.actuate.health.StatusAggregator;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Health aggregation policy (DDP-#49, AC4 / CON007 risk R17).
+ *
+ * &lt;p&gt;Adds a custom {@code DEGRADED} status ordered between DOWN and UP. When an
+ * optional integration (currently SMTP) is unreachable, the aggregate health
+ * reports DEGRADED — which the actuator maps to HTTP 200, so the docker-compose
+ * healthcheck keeps the container &quot;healthy&quot; and core clinic flows stay
+ * available. A MySQL or Redis failure still aggregates to DOWN (HTTP 503,
+ * container unhealthy): only those two gate the stack (SDS 2.5.1).
+ *
+ * &lt;p&gt;Severity order, worst first: OUT_OF_SERVICE &amp;gt; DOWN &amp;gt; DEGRADED &amp;gt; UP.
+ * (Spring Boot 3.5 replaced OrderedHealthAggregator/HealthStatusAggregator
+ * with StatusAggregator/SimpleStatusAggregator.)
+ */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L24">public class HealthConfig {</span>
+
+    /** Custom health status: optional integration unavailable, core stack fine. */
+<span class="fc" id="L27">    public static final Status DEGRADED = new Status(&quot;DEGRADED&quot;);</span>
+
+    @Bean
+    public StatusAggregator statusAggregator() {
+<span class="fc" id="L31">        return new SimpleStatusAggregator(</span>
+                Status.OUT_OF_SERVICE, Status.DOWN, DEGRADED, Status.UP);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

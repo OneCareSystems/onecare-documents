@@ -1,0 +1,487 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="10.21.2">
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/BackendApplication.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Patient.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Medicine.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/BackupMetadata.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/PrescriptionItem.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/ExternalDispensing.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/PasswordResetToken.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Prescription.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/SystemSetting.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Appointment.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/DispensingItem.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Invoice.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/DoctorSchedule.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/AuditLog.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/User.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/RolePermissionEntity.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/Payment.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/entity/InvoiceItem.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/Status.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/DeliveryMethod.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/ReportFormat.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/PaymentStatus.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/Role.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/AppointmentStatus.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/Gender.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/InvoiceStatus.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/PrescriptionStatus.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/ReportType.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/PaymentMethod.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/enums/PrescriptionItemType.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/ConflictException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/PermissionRuleViolationException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/SlotConflictException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/DuplicateUserException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/ResourceNotFoundException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/StockShortfallException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/EmailSendException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/BusinessRuleException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/GlobalExceptionHandler.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/InvalidAppointmentStatusException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/AccountLockedException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/InvalidStockException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/TimeSlotConflictException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/InvalidResetTokenException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/DateRangeTooLargeException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/exception/RestoreConfirmationRequiredException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/config/HealthConfig.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/config/SecurityConfig.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/config/RequiredConfigEnvironmentPostProcessor.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/config/OpenApiConfig.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/TokenBlacklistService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/JwtService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/Permission.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/ClientIpResolver.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/RolePermission.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/PermissionCatalog.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/AppUserDetailsService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/ApiRateLimitFilter.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/JwtAuthFilter.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/RolePermissionSeeder.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/security/SecurityUtil.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuditLogService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/ExternalDispensingServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/UserService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PatientService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PrescriptionServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PublicAppointmentServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AppointmentService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PrescriptionDispensingService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/UserServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AppointmentConfirmationNotifier.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/ExternalDispensingService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/SystemSettingService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/ReportService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/RolePermissionServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/SystemSettingServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/StubAppointmentConfirmationNotifier.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PasswordResetServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/QueueServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/BackupService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/InvoiceServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/DoctorScheduleService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/DispensingRules.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuthService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/EmailService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/RolePermissionService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PrescriptionService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuditService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/QueueService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuditServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/ReportServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuthServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PublicAppointmentService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AppointmentServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/MedicineServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/AuditLogServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PasswordResetService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/EmailServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/BackupServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/MedicineService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/DoctorScheduleServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/PatientServiceImpl.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/service/InvoiceService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/audit/Audited.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/audit/AuditSanitizer.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/audit/AuditAspect.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/scheduler/AppointmentScheduler.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/scheduler/SystemBackupScheduler.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/PrescriptionItemRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/UserRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/DoctorScheduleRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/BackupMetadataRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/MedicineRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/AuditLogRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/DispensingItemRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/AppointmentRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/RolePermissionEntityRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/PasswordResetTokenRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/PrescriptionRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/PatientRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/ExternalDispensingRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/SystemSettingRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/repository/InvoiceRepository.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/health/SmtpHealthIndicator.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/ExternalDispensingItemRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/PrescriptionItemRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/RecordPaymentRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/CreatePrescriptionRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UserCreateRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/CreateAppointmentRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/ResetPasswordRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/VerifyExternalDispensingRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/DoctorScheduleRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/DispensePrescriptionRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UserUpdateRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/MedicineRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdateInvoiceLineRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdatePrescriptionRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/CreateExternalDispensingItemRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/PatientCreateRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/AppointmentStatusRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/AssignRoleRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/LogoutRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/RolePermissionsRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdateAppointmentRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/PatientUpdateRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdateInvoiceRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/GenerateInvoiceRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/StockUpdateRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/RestoreRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/DayScheduleRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/ForgotPasswordRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/CreateExternalDispensingRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/RefreshRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdateConsultationFeeRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/TimeSlotRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/PublicAppointmentRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/ExternalDispensingRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/LoginRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/request/UpdateBackupScheduleRequest.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/AppointmentConfirmation.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/ConsultationFeeResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/RolePermissionsResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/ScheduleConflictResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PrescriptionDetailResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/AppointmentClinicalNotesResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/AuditLogResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/ExternalDispensingResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/AppointmentResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PatientResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/InvoiceResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PrescriptionItemResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PatientHistoryPrescriptionResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PharmacyReportResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/DispensePreviewResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/MedicineResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PatientHistoryResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PublicDoctorResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/ClinicReportResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/InvoiceItemResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PrescriptionResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/SlotConflictResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/UserResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/PaymentResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/InvoiceSummaryResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/QueueResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/DayScheduleResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/BackupResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/AuthResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/DoctorScheduleResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/response/BackupScheduleResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/dto/ApiResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/util/ReportExportUtil.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/util/MaskingUtil.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/util/AesGcmEncryptor.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/util/PhoneNumberUtil.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/DoctorScheduleController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/AuditLogController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/AuthController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/SecureTestController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/PublicAppointmentController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/MedicineController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/ExternalDispensingController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/SystemBackupController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/PublicDoctorController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/PatientController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/AppointmentController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/InvoiceController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/ReportController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/RolePermissionController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/UserController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/SystemSettingsController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/QueueController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/controller/PrescriptionController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/exception/RateLimitExceededException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/exception/ChatbotUnavailableException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/exception/InvalidInputException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/config/ChatbotProperties.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/config/ChatApiConfig.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/config/ChatApiProperties.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/ratelimit/SlidingWindowRateLimiter.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/ratelimit/ClientIpResolver.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/ratelimit/PublicEndpointWebConfig.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/ratelimit/PublicRateLimitInterceptor.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/ChatMessages.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatQueryService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatQueryClient.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/QueryInputValidator.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatBackend.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ScriptLanguage.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatbotQueryController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatQueryResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/query/ChatBackendResult.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeBaseService.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeDocumentPage.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeDocumentResponse.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeBaseSubmission.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeBaseRequestException.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeBaseClient.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/ApprovedUrlValidator.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/KnowledgeBaseController.java">
+</file>
+<file name="/home/runner/work/onecare-backend/onecare-backend/src/main/java/com/onecare/backend/chatbot/knowledgebase/DjangoKnowledgeBaseClient.java">
+</file>
+</checkstyle>

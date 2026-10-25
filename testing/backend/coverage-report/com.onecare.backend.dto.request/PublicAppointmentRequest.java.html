@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublicAppointmentRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.request</a> &gt; <span class="el_source">PublicAppointmentRequest.java</span></div><h1>PublicAppointmentRequest.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.request;
+
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+/**
+ * Deliberately narrower than the staff-side {@link CreateAppointmentRequest}:
+ * the patient identifies themselves by name, phone and date of birth instead
+ * of an internal patientId, and no internal fields (reason notes, clinical
+ * notes) are accepted on this unauthenticated surface.
+ */
+<span class="fc" id="L20">public record PublicAppointmentRequest(</span>
+        @NotBlank(message = &quot;Patient name is required&quot;)
+        @Size(max = 100)
+        String fullName,
+
+        @NotBlank(message = &quot;Contact number is required&quot;)
+        @Size(max = 20)
+        @Pattern(
+                regexp = &quot;^[\\s\\-()]*(?:(?:\\+94|0094|94|0)[\\s\\-()]*)?[1-9](?:[\\s\\-()]*\\d){8}[\\s\\-()]*$&quot;,
+                message = &quot;Contact number must be a valid Sri Lankan phone number&quot;)
+        String contactNo,
+
+        @NotNull(message = &quot;Date of birth is required&quot;)
+        @PastOrPresent(message = &quot;Date of birth cannot be in the future&quot;)
+        LocalDate dateOfBirth,
+
+        @NotBlank(message = &quot;Gender is required&quot;)
+        @Pattern(regexp = &quot;(?i)\\s*(MALE|FEMALE|OTHER)\\s*&quot;,
+                message = &quot;Gender must be Male, Female, or Other&quot;)
+        String gender,
+
+        @NotNull(message = &quot;Doctor ID is required&quot;)
+        @Positive(message = &quot;Doctor ID must be positive&quot;)
+        Long doctorId,
+
+        @NotNull(message = &quot;Appointment date/time is required&quot;)
+        @Future(message = &quot;Appointment date/time must be in the future&quot;)
+        LocalDateTime appointmentDateTime) {
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

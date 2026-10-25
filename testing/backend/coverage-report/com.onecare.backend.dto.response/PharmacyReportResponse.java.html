@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PharmacyReportResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.response</a> &gt; <span class="el_source">PharmacyReportResponse.java</span></div><h1>PharmacyReportResponse.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.response;
+
+import com.onecare.backend.enums.ReportType;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * Pharmacy report payload (FR040, UC25). Exactly one section is populated for
+ * the requested {@code type}; the others are empty lists.
+ *
+ * &lt;p&gt;Contact values are partially masked at query-mapping time (SDS section
+ * 2.5.3, AC6), so the on-screen JSON and the CSV/PDF export of the same query
+ * match exactly (AC5).&lt;/p&gt;
+ */
+<span class="fc" id="L17">public record PharmacyReportResponse(</span>
+        ReportType type,
+        LocalDate from,
+        LocalDate to,
+        List&lt;StockUsageRow&gt; stockUsage,
+        List&lt;ExpiryRow&gt; expiry,
+        List&lt;DispensingRow&gt; dispensingHistory) {
+
+    /** Units dispensed per medicine (in-house DDP-30 + external DDP-25). */
+<span class="fc" id="L26">    public record StockUsageRow(</span>
+            Long medicineId,
+            String medicineName,
+            long unitsDispensed) {
+    }
+
+    /**
+     * Medicines expiring inside the range - a straight projection of the
+     * expiry_date / is_quarantined data DDP-21 maintains (AC4); no separate
+     * expiry or quarantine logic runs here.
+     */
+<span class="fc" id="L37">    public record ExpiryRow(</span>
+            Long medicineId,
+            String medicineName,
+            LocalDate expiryDate,
+            int stockQuantity,
+            boolean quarantined) {
+    }
+
+    /** One dispensing line of the history (source distinguishes DDP-30/DDP-25). */
+<span class="fc" id="L46">    public record DispensingRow(</span>
+            Long referenceId,
+            String source,
+            LocalDateTime dispenseDate,
+            Long patientId,
+            String patientName,
+            String patientContactNo,
+            String medicineName,
+            int quantity) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

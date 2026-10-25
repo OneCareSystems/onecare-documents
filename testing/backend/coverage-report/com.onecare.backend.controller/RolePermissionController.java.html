@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RolePermissionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">RolePermissionController.java</span></div><h1>RolePermissionController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.RolePermissionsRequest;
+import com.onecare.backend.dto.response.RolePermissionsResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.RolePermissionService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@Tag(name = &quot;Role Permissions&quot;, description = &quot;Clinic configuration: configurable role permissions (FR003, UC3)&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/roles/{role}/permissions&quot;)
+public class RolePermissionController {
+
+    private final RolePermissionService rolePermissionService;
+
+<span class="fc" id="L26">    public RolePermissionController(RolePermissionService rolePermissionService) {</span>
+<span class="fc" id="L27">        this.rolePermissionService = rolePermissionService;</span>
+<span class="fc" id="L28">    }</span>
+
+    @Operation(summary = &quot;Get a role's permissions&quot;,
+            description = &quot;Returns the role's current permission set (UC3 step 2). Requires ROLE_PERMISSION_READ.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Permissions retrieved&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing ROLE_PERMISSION_READ permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Unknown role&quot;)
+    })
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.ROLE_PERMISSION_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;RolePermissionsResponse&gt;&gt; getPermissions(@PathVariable String role) {
+<span class="fc" id="L40">        RolePermissionsResponse response = rolePermissionService.getPermissions(role);</span>
+<span class="fc" id="L41">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Permissions retrieved successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Replace a role's permissions&quot;,
+            description = &quot;Replaces the role's full permission set. Enforces the hard business rules: &quot;
+                    + &quot;BR004 (privileged permissions are SUPER_ADMIN-only), &quot;
+                    + &quot;BR005 (the SUPER_ADMIN set cannot be modified), &quot;
+                    + &quot;BR006 (no empty sets, catalog permissions only). &quot;
+                    + &quot;Violations return 422 naming the rule and persist nothing. Requires ROLE_PERMISSION_UPDATE.&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Permissions replaced&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Unknown permission value(s)&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing ROLE_PERMISSION_UPDATE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Unknown role&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;422&quot;, description = &quot;BR004-BR006 violation; nothing persisted&quot;)
+    })
+    @PutMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.ROLE_PERMISSION_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;RolePermissionsResponse&gt;&gt; updatePermissions(
+            @PathVariable String role,
+            @RequestBody RolePermissionsRequest request) {
+<span class="fc" id="L62">        RolePermissionsResponse response = rolePermissionService.updatePermissions(role, request);</span>
+<span class="fc" id="L63">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Permissions updated successfully&quot;, response));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.config</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">
+package com.onecare.backend.config;
+
+import com.onecare.backend.security.ApiRateLimitFilter;
+import com.onecare.backend.security.AppUserDetailsService;
+import com.onecare.backend.security.JwtAuthFilter;
+
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import org.springframework.http.HttpMethod;
+
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(
+        prePostEnabled = true,
+        securedEnabled = true
+)
+public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
+
+    private final AppUserDetailsService userDetailsService;
+
+    private final ApiRateLimitFilter apiRateLimitFilter;
+
+    /**
+     * Comma-separated frontend origins.
+     *
+     * Example:
+     * frontend.allowed-origins=http://localhost:5173
+     */
+    @Value(&quot;${frontend.allowed-origins}&quot;)
+    private String allowedOrigins;
+
+    /**
+     * Argon2 cost parameters. The defaults are production strength; tests lower
+     * them (src/test/resources/application.properties) so the per-test user
+     * creation and login hashing does not dominate suite runtime.
+     */
+    @Value(&quot;${app.security.argon2.parallelism:1}&quot;)
+    int argon2Parallelism;
+
+    @Value(&quot;${app.security.argon2.memory-kb:65536}&quot;)
+    int argon2MemoryKb;
+
+    @Value(&quot;${app.security.argon2.iterations:2}&quot;)
+    int argon2Iterations;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, AppUserDetailsService userDetailsService,
+<span class="fc" id="L77">            ApiRateLimitFilter apiRateLimitFilter) {</span>
+<span class="fc" id="L78">        this.jwtAuthFilter = jwtAuthFilter;</span>
+<span class="fc" id="L79">        this.userDetailsService = userDetailsService;</span>
+<span class="fc" id="L80">        this.apiRateLimitFilter = apiRateLimitFilter;</span>
+<span class="fc" id="L81">    }</span>
+
+    @Bean
+    public SecurityFilterChain filterChain(
+            HttpSecurity http
+    ) throws Exception {
+
+<span class="fc" id="L88">        http</span>
+
+                
+<span class="fc" id="L91">                .cors(cors -&gt;</span>
+<span class="fc" id="L92">                        cors.configurationSource(</span>
+<span class="fc" id="L93">                                corsConfigurationSource()</span>
+                        )
+                )
+
+                
+<span class="fc" id="L98">                .csrf(csrf -&gt; csrf.disable())</span>
+
+<span class="fc" id="L100">                .sessionManagement(session -&gt;</span>
+<span class="fc" id="L101">                        session.sessionCreationPolicy(</span>
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
+                
+<span class="fc" id="L107">                .exceptionHandling(ex -&gt; ex</span>
+
+<span class="fc" id="L109">                        .authenticationEntryPoint(</span>
+                                (request, response, authException) -&gt;
+
+<span class="fc" id="L112">                                        response.sendError(</span>
+                                                HttpServletResponse.SC_UNAUTHORIZED,
+                                                &quot;Unauthorized&quot;
+                                        )
+                        )
+
+<span class="fc" id="L118">                        .accessDeniedHandler(</span>
+<span class="fc" id="L119">                                accessDeniedHandler()</span>
+                        )
+                )
+
+<span class="fc" id="L123">                .authorizeHttpRequests(auth -&gt; auth</span>
+                        // Health endpoint is public: the docker-compose healthcheck
+                        // Only status is exposed (no details) by default config.
+<span class="fc" id="L126">                        .requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;).permitAll()</span>
+<span class="fc" id="L127">                        .requestMatchers(</span>
+                                &quot;/api/auth/login&quot;,
+                                &quot;/api/auth/refresh&quot;,
+                                &quot;/api/auth/forgot-password&quot;,
+                                &quot;/api/auth/reset-password&quot;,
+                                &quot;/api/public/**&quot;,
+                                &quot;/v3/api-docs/**&quot;,
+                                &quot;/swagger-ui/**&quot;)
+<span class="fc" id="L135">                        .permitAll()</span>
+<span class="fc" id="L136">                        .requestMatchers(</span>
+                                HttpMethod.POST,
+                                &quot;/api/chatbot/query&quot;
+                        )
+<span class="fc" id="L140">                            .permitAll()</span>
+<span class="fc" id="L141">                        .requestMatchers(&quot;/api/users/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L142">                        .requestMatchers(HttpMethod.GET, &quot;/api/doctors/*/schedule&quot;)</span>
+<span class="fc" id="L143">                            .hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;DOCTOR&quot;)</span>
+<span class="fc" id="L144">                        .requestMatchers(&quot;/api/doctors/**&quot;).hasRole(&quot;SUPER_ADMIN&quot;)</span>
+<span class="fc" id="L145">                        .requestMatchers(&quot;/api/roles/**&quot;).hasRole(&quot;SUPER_ADMIN&quot;)</span>
+<span class="fc" id="L146">                        .requestMatchers(&quot;/api/system/**&quot;).hasRole(&quot;SUPER_ADMIN&quot;)</span>
+<span class="fc" id="L147">                        .requestMatchers(&quot;/api/patients/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;, &quot;DOCTOR&quot;)</span>
+<span class="fc" id="L148">                        .requestMatchers(HttpMethod.GET, &quot;/api/medicines/**&quot;)</span>
+<span class="fc" id="L149">                            .hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;, &quot;PHARMACIST&quot;, &quot;DOCTOR&quot;)</span>
+<span class="fc" id="L150">                        .requestMatchers(&quot;/api/medicines/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;, &quot;PHARMACIST&quot;)</span>
+<span class="fc" id="L151">                        .requestMatchers(&quot;/api/prescriptions/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;, &quot;DOCTOR&quot;, &quot;PHARMACIST&quot;)</span>
+<span class="fc" id="L152">                        .requestMatchers(HttpMethod.GET, &quot;/api/appointments/available-slots&quot;).permitAll()</span>
+<span class="fc" id="L153">                        .requestMatchers(&quot;/api/appointments/*/clinical-notes&quot;)</span>
+<span class="fc" id="L154">                            .hasRole(&quot;DOCTOR&quot;)</span>
+<span class="fc" id="L155">                        .requestMatchers(&quot;/api/appointments/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;, &quot;DOCTOR&quot;)</span>
+<span class="fc" id="L156">                        .requestMatchers(&quot;/api/invoices/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;,&quot;PHARMACIST&quot;)</span>
+                        // reports (Table 9): clinic - SUPER_ADMIN/ADMIN, pharmacy - SUPER_ADMIN/PHARMACIST
+<span class="fc" id="L158">                        .requestMatchers(&quot;/api/reports/clinic/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L159">                        .requestMatchers(&quot;/api/reports/pharmacy/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;PHARMACIST&quot;)</span>
+<span class="fc" id="L160">                        .requestMatchers(&quot;/api/audit/**&quot;).hasAnyRole(&quot;SUPER_ADMIN&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L161">                        .requestMatchers(&quot;/api/secure/**&quot;).authenticated()</span>
+<span class="fc" id="L162">                        .anyRequest().authenticated())</span>
+<span class="fc" id="L163">                .authenticationProvider(authenticationProvider())</span>
+<span class="fc" id="L164">                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)</span>
+<span class="fc" id="L165">                .addFilterBefore(apiRateLimitFilter, JwtAuthFilter.class);</span>
+
+<span class="fc" id="L167">        return http.build();</span>
+    }
+
+   
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+
+<span class="fc" id="L174">        CorsConfiguration configuration =</span>
+                new CorsConfiguration();
+
+<span class="fc" id="L177">        configuration.setAllowedOrigins(</span>
+
+<span class="fc" id="L179">                Arrays.stream(</span>
+<span class="fc" id="L180">                                allowedOrigins.split(&quot;,&quot;)</span>
+                        )
+<span class="fc" id="L182">                        .map(String::trim)</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                        .filter(origin -&gt; !origin.isEmpty())</span>
+<span class="fc" id="L184">                        .toList()</span>
+        );
+
+<span class="fc" id="L187">        configuration.setAllowedMethods(</span>
+<span class="fc" id="L188">                List.of(</span>
+                        &quot;GET&quot;,
+                        &quot;POST&quot;,
+                        &quot;PUT&quot;,
+                        &quot;PATCH&quot;,
+                        &quot;DELETE&quot;,
+                        &quot;OPTIONS&quot;
+                )
+        );
+
+<span class="fc" id="L198">        configuration.setAllowedHeaders(</span>
+<span class="fc" id="L199">                List.of(</span>
+                        &quot;Authorization&quot;,
+                        &quot;Content-Type&quot;,
+                        &quot;Accept&quot;,
+                        &quot;X-Requested-With&quot;
+                )
+        );
+
+      
+<span class="fc" id="L208">        configuration.setAllowCredentials(false);</span>
+
+<span class="fc" id="L210">        UrlBasedCorsConfigurationSource source =</span>
+                new UrlBasedCorsConfigurationSource();
+
+<span class="fc" id="L213">        source.registerCorsConfiguration(</span>
+                &quot;/**&quot;,
+                configuration
+        );
+
+<span class="fc" id="L218">        return source;</span>
+    }
+
+   
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+
+<span class="fc" id="L225">        return (request, response, accessDeniedException) -&gt; {</span>
+
+<span class="fc" id="L227">            response.setStatus(</span>
+                    HttpServletResponse.SC_FORBIDDEN
+            );
+
+<span class="fc" id="L231">            response.setContentType(</span>
+                    &quot;application/json&quot;
+            );
+
+<span class="fc" id="L235">            response.setCharacterEncoding(&quot;UTF-8&quot;);</span>
+
+<span class="fc" id="L237">            response.getWriter().write(</span>
+                    &quot;{\&quot;success\&quot;:false,&quot;
+                            + &quot;\&quot;message\&quot;:\&quot;Access denied\&quot;,&quot;
+                            + &quot;\&quot;data\&quot;:null}&quot;
+            );
+<span class="fc" id="L242">        };</span>
+    }
+
+   
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+
+<span class="fc" id="L249">        return new Argon2PasswordEncoder(</span>
+                16,                 // salt length
+                32,                 // hash length
+                argon2Parallelism,  // parallelism
+                argon2MemoryKb,     // memory in KB
+                argon2Iterations    // iterations
+        );
+    }
+
+    
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+
+<span class="fc" id="L262">        DaoAuthenticationProvider provider =</span>
+                new DaoAuthenticationProvider(
+                        userDetailsService
+                );
+
+<span class="fc" id="L267">        provider.setPasswordEncoder(</span>
+<span class="fc" id="L268">                passwordEncoder()</span>
+        );
+
+<span class="fc" id="L271">        return provider;</span>
+    }
+
+    
+    @Bean
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration configuration
+    ) throws Exception {
+
+<span class="fc" id="L280">        return configuration.getAuthenticationManager();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

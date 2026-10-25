@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApiRateLimitFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.security</a> &gt; <span class="el_source">ApiRateLimitFilter.java</span></div><h1>ApiRateLimitFilter.java</h1><pre class="source lang-java linenums">package com.onecare.backend.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Fixed-window rate limiter with two independent tiers (SDS 2.5.4, NFRS-009):
+ * - auth tier: /api/auth/* endpoints
+ * - public-booking tier: /api/public/* endpoints and the public available-slots
+ *   endpoint (DDP-33 — public booking is an abuse vector, so it gets its own
+ *   limit, distinct from the auth tier)
+ * Each tier has its own limit/window configuration and on/off switch. Within a
+ * tier, buckets are scoped per client IP *and* per endpoint, so traffic on one
+ * route cannot consume another route's allowance. In-memory and per-instance:
+ * adequate for a single node, but counters are not shared across instances
+ * (documented limitation).
+ *
+ * Exact-match exemptions (see {@link #RATE_LIMIT_EXEMPT_PATHS}) opt individual
+ * public GET routes out of the public tier entirely.
+ */
+@Component
+public class ApiRateLimitFilter extends OncePerRequestFilter {
+
+<span class="fc" id="L41">    private static final Logger log = LoggerFactory.getLogger(ApiRateLimitFilter.class);</span>
+    private static final String AUTH_PREFIX = &quot;/api/auth/&quot;;
+    private static final String PUBLIC_PREFIX = &quot;/api/public/&quot;;
+    private static final String PUBLIC_AVAILABLE_SLOTS_PATH = &quot;/api/appointments/available-slots&quot;;
+
+    private static final String PUBLIC_DOCTOR_SLOTS_PREFIX = &quot;/api/public/doctors/&quot;;
+    private static final String PUBLIC_DOCTOR_SLOTS_SUFFIX = &quot;/available-slots&quot;;
+
+    /**
+     * Public-tier routes exempt from rate limiting (exact match, no path
+     * variables). The doctor directory is the read-only picker bootstrap of
+     * the booking form — id + display name only — so exhausting the limit
+     * there would only lock a patient out of the page while leaving the
+     * mutating booking endpoint (still limited) unaffected.
+     * Referenced by OpenApiConfig so the docs don't advertise a 429 that
+     * cannot happen on these routes.
+     */
+<span class="fc" id="L58">    public static final Set&lt;String&gt; RATE_LIMIT_EXEMPT_PATHS = Set.of(</span>
+            &quot;/api/public/doctors&quot;);
+  
+    private static final String FORWARDED_FOR = &quot;X-Forwarded-For&quot;;
+    private static final int MAX_TRACKED_BUCKETS = 10_000;
+
+<span class="fc" id="L64">    private record Window(long startedAtMillis, int count) {</span>
+    }
+
+    /** Per-tier limit configuration. */
+<span class="fc" id="L68">    private record RateLimitTier(String name, boolean enabled, int requestsPerWindow, long windowMillis) {</span>
+    }
+
+    private final RateLimitTier authTier;
+    private final RateLimitTier publicBookingTier;
+    private final List&lt;IpAddressMatcher&gt; trustedProxies;
+    private final long maxWindowMillis;
+<span class="fc" id="L75">    private final Map&lt;String, Window&gt; windows = new ConcurrentHashMap&lt;&gt;();</span>
+
+    @Autowired
+    public ApiRateLimitFilter(
+            @Value(&quot;${auth.rate-limit.enabled:true}&quot;) boolean authEnabled,
+            @Value(&quot;${auth.rate-limit.requests-per-minute:10}&quot;) int authRequestsPerWindow,
+            @Value(&quot;${auth.rate-limit.window-seconds:60}&quot;) long authWindowSeconds,
+            @Value(&quot;${public-booking.rate-limit.enabled:true}&quot;) boolean publicBookingEnabled,
+            @Value(&quot;${public-booking.rate-limit.requests-per-minute:5}&quot;) int publicBookingRequestsPerWindow,
+            @Value(&quot;${public-booking.rate-limit.window-seconds:60}&quot;) long publicBookingWindowSeconds,
+<span class="fc" id="L85">            @Value(&quot;${api.rate-limit.trusted-proxies:}&quot;) String trustedProxyAddresses) {</span>
+<span class="fc" id="L86">        this.authTier = new RateLimitTier(&quot;auth&quot;, authEnabled, authRequestsPerWindow, authWindowSeconds * 1000L);</span>
+<span class="fc" id="L87">        this.publicBookingTier = new RateLimitTier(&quot;public-booking&quot;, publicBookingEnabled,</span>
+                publicBookingRequestsPerWindow, publicBookingWindowSeconds * 1000L);
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        this.trustedProxies = trustedProxyAddresses.isBlank()</span>
+<span class="fc" id="L90">                ? List.of()</span>
+<span class="fc" id="L91">                : Arrays.stream(trustedProxyAddresses.split(&quot;,&quot;))</span>
+<span class="fc" id="L92">                        .map(String::trim)</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                        .filter(address -&gt; !address.isEmpty())</span>
+<span class="fc" id="L94">                        .map(IpAddressMatcher::new)</span>
+<span class="fc" id="L95">                        .toList();</span>
+<span class="fc" id="L96">        this.maxWindowMillis = Math.max(authTier.windowMillis(), publicBookingTier.windowMillis());</span>
+<span class="fc" id="L97">    }</span>
+
+    public ApiRateLimitFilter(
+            boolean authEnabled,
+            int authRequestsPerWindow,
+            long authWindowSeconds,
+            boolean publicBookingEnabled,
+            int publicBookingRequestsPerWindow,
+            long publicBookingWindowSeconds) {
+<span class="fc" id="L106">        this(authEnabled, authRequestsPerWindow, authWindowSeconds, publicBookingEnabled,</span>
+                publicBookingRequestsPerWindow, publicBookingWindowSeconds, &quot;&quot;);
+<span class="fc" id="L108">    }</span>
+
+    /** Convenience constructor applying the same config to both tiers (tests). */
+    public ApiRateLimitFilter(boolean enabled, int requestsPerWindow, long windowSeconds) {
+<span class="fc" id="L112">        this(enabled, requestsPerWindow, windowSeconds, enabled, requestsPerWindow, windowSeconds);</span>
+<span class="fc" id="L113">    }</span>
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain) throws ServletException, IOException {
+
+<span class="fc" id="L120">        RateLimitTier tier = tierFor(request.getRequestURI());</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">        if (tier == null || !tier.enabled()) {</span>
+<span class="fc" id="L122">            chain.doFilter(request, response);</span>
+<span class="fc" id="L123">            return;</span>
+        }
+
+<span class="fc" id="L126">        String clientIp = resolveClientIp(request);</span>
+<span class="fc" id="L127">        String bucketKey = rateLimitKey(request, clientIp);</span>
+<span class="fc" id="L128">        long now = System.currentTimeMillis();</span>
+
+<span class="fc" id="L130">        Window window = windows.compute(bucketKey, (key, current) -&gt; {</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">            if (current == null || now - current.startedAtMillis() &gt;= tier.windowMillis()) {</span>
+<span class="fc" id="L132">                purgeExpired(now);</span>
+<span class="fc" id="L133">                return new Window(now, 1);</span>
+            }
+<span class="fc" id="L135">            return new Window(current.startedAtMillis(), current.count() + 1);</span>
+        });
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (window.count() &gt; tier.requestsPerWindow()) {</span>
+<span class="fc" id="L139">            long retryAfterSeconds = Math.max(</span>
+<span class="fc" id="L140">                    1, (window.startedAtMillis() + tier.windowMillis() - now) / 1000);</span>
+<span class="fc" id="L141">            log.warn(&quot;Rate limit exceeded | tier={} | ip={} | path={} | limit={}/{}s&quot;,</span>
+<span class="fc" id="L142">                    tier.name(), clientIp, request.getRequestURI(),</span>
+<span class="fc" id="L143">                    tier.requestsPerWindow(), tier.windowMillis / 1000);</span>
+
+<span class="fc" id="L145">            response.setStatus(429);</span>
+<span class="fc" id="L146">            response.setContentType(&quot;application/json&quot;);</span>
+<span class="fc" id="L147">            response.setHeader(&quot;Retry-After&quot;, String.valueOf(retryAfterSeconds));</span>
+<span class="fc" id="L148">            response.getWriter().write(</span>
+                    &quot;{\&quot;success\&quot;:false,\&quot;message\&quot;:\&quot;Too many requests. Please try again later.\&quot;,\&quot;data\&quot;:null}&quot;);
+<span class="fc" id="L150">            return;</span>
+        }
+
+<span class="fc" id="L153">        chain.doFilter(request, response);</span>
+<span class="fc" id="L154">    }</span>
+
+    private RateLimitTier tierFor(String requestUri) {
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (requestUri.startsWith(AUTH_PREFIX)) {</span>
+<span class="fc" id="L158">            return authTier;</span>
+        }
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (PUBLIC_AVAILABLE_SLOTS_PATH.equals(requestUri)) {</span>
+<span class="fc" id="L161">            return publicBookingTier;</span>
+        }
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (requestUri.startsWith(PUBLIC_PREFIX)) {</span>
+            // Exact match only: /api/public/doctors is exempt, but the
+            // slots sub-path (/api/public/doctors/{id}/available-slots)
+            // and the booking endpoint remain rate limited.
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            return RATE_LIMIT_EXEMPT_PATHS.contains(requestUri) ? null : publicBookingTier;</span>
+        }
+<span class="fc" id="L169">        return null;</span>
+    }
+
+    private String rateLimitKey(HttpServletRequest request, String clientIp) {
+<span class="fc" id="L173">        String path = request.getRequestURI();</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (path.matches(&quot;/api/public/doctors/[^/]+/available-slots&quot;)) {</span>
+<span class="fc" id="L175">            path = &quot;/api/public/doctors/{doctorId}/available-slots&quot;;</span>
+        }
+<span class="fc" id="L177">        return clientIp + &quot;|&quot; + path;</span>
+    }
+
+    private String normalizedRateLimitPath(String requestUri) {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (!requestUri.startsWith(PUBLIC_DOCTOR_SLOTS_PREFIX)</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                || !requestUri.endsWith(PUBLIC_DOCTOR_SLOTS_SUFFIX)) {</span>
+<span class="nc" id="L183">            return requestUri;</span>
+        }
+
+<span class="nc" id="L186">        String doctorId = requestUri.substring(</span>
+<span class="nc" id="L187">                PUBLIC_DOCTOR_SLOTS_PREFIX.length(),</span>
+<span class="nc" id="L188">                requestUri.length() - PUBLIC_DOCTOR_SLOTS_SUFFIX.length());</span>
+<span class="nc bnc" id="L189" title="All 4 branches missed.">        if (doctorId.isEmpty() || doctorId.contains(&quot;/&quot;)) {</span>
+<span class="nc" id="L190">            return requestUri;</span>
+        }
+
+        try {
+<span class="nc" id="L194">            Long.parseLong(doctorId);</span>
+<span class="nc" id="L195">            return PUBLIC_DOCTOR_SLOTS_PREFIX + &quot;{doctorId}&quot; + PUBLIC_DOCTOR_SLOTS_SUFFIX;</span>
+<span class="nc" id="L196">        } catch (NumberFormatException ignored) {</span>
+<span class="nc" id="L197">            return requestUri;</span>
+        }
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+<span class="fc" id="L202">        String remoteAddr = request.getRemoteAddr();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (trustedProxies.stream().noneMatch(proxy -&gt; proxy.matches(remoteAddr))) {</span>
+<span class="fc" id="L204">            return remoteAddr;</span>
+        }
+
+<span class="fc" id="L207">        String forwarded = request.getHeader(FORWARDED_FOR);</span>
+<span class="pc bpc" id="L208" title="2 of 4 branches missed.">        if (forwarded != null &amp;&amp; !forwarded.isBlank()) {</span>
+<span class="fc" id="L209">            int comma = forwarded.indexOf(',');</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            return (comma &gt; 0 ? forwarded.substring(0, comma) : forwarded).trim();</span>
+        }
+<span class="nc" id="L212">        return remoteAddr;</span>
+    }
+
+    private void purgeExpired(long now) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (windows.size() &lt;= MAX_TRACKED_BUCKETS) {</span>
+<span class="fc" id="L217">            return;</span>
+        }
+<span class="nc" id="L219">        Iterator&lt;Map.Entry&lt;String, Window&gt;&gt; iterator = windows.entrySet().iterator();</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            if (now - iterator.next().getValue().startedAtMillis() &gt;= maxWindowMillis) {</span>
+<span class="nc" id="L222">                iterator.remove();</span>
+            }
+        }
+<span class="nc" id="L225">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">AuthController.java</span></div><h1>AuthController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.request.ForgotPasswordRequest;
+import com.onecare.backend.dto.request.LoginRequest;
+import com.onecare.backend.dto.request.RefreshRequest;
+import com.onecare.backend.dto.request.ResetPasswordRequest;
+import com.onecare.backend.dto.response.AuthResponse;
+import com.onecare.backend.dto.response.UserResponse;
+import com.onecare.backend.service.AuthService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/auth&quot;)
+@Tag(name = &quot;Auth&quot;, description = &quot;Authentication, token refresh, profile, and password reset&quot;)
+public class AuthController {
+
+        private final AuthService authService;
+
+<span class="fc" id="L26">        public AuthController(AuthService authService) {</span>
+<span class="fc" id="L27">                this.authService = authService;</span>
+<span class="fc" id="L28">        }</span>
+
+        @Operation(summary = &quot;Login&quot;, description = &quot;Authenticates with username and password &quot;
+                        + &quot;and returns access and refresh tokens.&quot;)
+        @ApiResponses({
+                        @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Login successful&quot;),
+                        @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Invalid credentials&quot;),
+                        @ApiResponse(responseCode = &quot;423&quot;, description = &quot;Account temporarily locked&quot;),
+                        @ApiResponse(responseCode = &quot;429&quot;, description = &quot;Too many requests&quot;)
+        })
+        @PostMapping(&quot;/login&quot;)
+        public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;AuthResponse&gt;&gt; login(
+                        @Valid @RequestBody LoginRequest request) {
+
+<span class="fc" id="L42">                AuthResponse response = authService.login(request);</span>
+
+<span class="fc" id="L44">                return ResponseEntity.ok(</span>
+                                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                                                true,
+                                                &quot;Login successful&quot;,
+                                                response));
+        }
+
+        @Operation(summary = &quot;Refresh tokens&quot;, description = &quot;Exchanges a valid refresh token &quot;
+                        + &quot;for a new access/refresh token pair.&quot;)
+        @ApiResponses({
+                        @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Token refreshed successfully&quot;),
+                        @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Invalid, expired, or wrong-type token&quot;),
+                        @ApiResponse(responseCode = &quot;429&quot;, description = &quot;Too many requests&quot;)
+        })
+        @PostMapping(&quot;/refresh&quot;)
+        public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;AuthResponse&gt;&gt; refresh(
+                        @Valid @RequestBody RefreshRequest request) {
+
+<span class="fc" id="L62">                AuthResponse response = authService.refresh(request);</span>
+
+<span class="fc" id="L64">                return ResponseEntity.ok(</span>
+                                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                                                true,
+                                                &quot;Token refreshed successfully&quot;,
+                                                response));
+        }
+
+        @Operation(summary = &quot;Current profile&quot;, description = &quot;Returns the authenticated user's profile.&quot;)
+        @ApiResponses({
+                        @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Profile retrieved successfully&quot;),
+                        @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Missing or invalid access token&quot;)
+        })
+        @PreAuthorize(&quot;isAuthenticated()&quot;)
+        @GetMapping(&quot;/me&quot;)
+        public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;UserResponse&gt;&gt; me() {
+
+<span class="fc" id="L80">                UserResponse response = authService.getCurrentUser();</span>
+
+<span class="fc" id="L82">                return ResponseEntity.ok(</span>
+                                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                                                true,
+                                                &quot;Profile retrieved successfully&quot;,
+                                                response));
+        }
+
+        @Operation(summary = &quot;Request password reset&quot;, description = &quot;Starts the password reset flow. &quot;
+                        + &quot;Always returns the same success response whether or not the email is registered &quot;
+                        + &quot;(prevents account enumeration). If registered, a reset link containing a &quot;
+                        + &quot;single-use token (default TTL 30 minutes) is emailed. Rate limited per IP.&quot;)
+        @ApiResponses({
+                        @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Generic success (email sent if registered)&quot;),
+                        @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation failed (invalid email format)&quot;),
+                        @ApiResponse(responseCode = &quot;429&quot;, description = &quot;Too many requests&quot;),
+                        @ApiResponse(responseCode = &quot;503&quot;, description = &quot;Email delivery unavailable&quot;)
+        })
+        @PostMapping(&quot;/forgot-password&quot;)
+        public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;Void&gt;&gt; forgotPassword(
+                        @Valid @RequestBody ForgotPasswordRequest request) {
+
+<span class="fc" id="L103">                authService.requestPasswordReset(request);</span>
+
+<span class="fc" id="L105">                return ResponseEntity.ok(</span>
+                                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                                                true,
+                                                &quot;If the email address is registered, a password reset link has been sent.&quot;));
+        }
+
+	@Operation(summary = &quot;Reset password&quot;, description = &quot;Sets a new password using the raw token &quot;
+			+ &quot;from the reset email. On success the account is unlocked &quot;
+			+ &quot;(failedAttempts/lock cleared) and the token is consumed (single-use). &quot;
+			+ &quot;Unknown, expired, and already-used tokens are rejected with the same generic message.&quot;)
+	@ApiResponses({
+			@ApiResponse(responseCode = &quot;200&quot;, description = &quot;Password has been reset successfully&quot;),
+			@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Validation failed or invalid/expired/used token&quot;),
+			@ApiResponse(responseCode = &quot;429&quot;, description = &quot;Too many requests&quot;)
+	})
+	@PostMapping(&quot;/reset-password&quot;)
+	public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;Void&gt;&gt; resetPassword(
+			@Valid @RequestBody ResetPasswordRequest request) {
+
+<span class="fc" id="L124">		authService.resetPassword(request);</span>
+
+<span class="fc" id="L126">		return ResponseEntity.ok(</span>
+				new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+						true,
+						&quot;Password has been reset successfully&quot;));
+	}
+
+	@Operation(summary = &quot;Logout&quot;, description = &quot;Invalidates the current session and blacklists the JWT access token until its expiration. &quot;
+			+ &quot;When the optional refreshToken is supplied in the body, it is blacklisted too, so it can no longer mint new access tokens.&quot;)
+	@ApiResponses({
+			@ApiResponse(responseCode = &quot;200&quot;, description = &quot;Logout successful&quot;),
+			@ApiResponse(responseCode = &quot;401&quot;, description = &quot;Missing or invalid access token&quot;)
+	})
+	@PreAuthorize(&quot;isAuthenticated()&quot;)
+	@PostMapping(&quot;/logout&quot;)
+	public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;Void&gt;&gt; logout(
+			@RequestHeader(name = org.springframework.http.HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+			@RequestBody(required = false) com.onecare.backend.dto.request.LogoutRequest logoutRequest) {
+
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">		if (authHeader == null || !authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="nc" id="L145">			return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED)</span>
+<span class="nc" id="L146">					.body(new com.onecare.backend.dto.ApiResponse&lt;&gt;(false, &quot;Missing or invalid authorization token&quot;, null));</span>
+		}
+
+<span class="fc" id="L149">		String token = authHeader.substring(7);</span>
+		// Body is optional: clients that only send the header still work, they
+		// just get access-token-only revocation (backwards compatible).
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		authService.logout(token, logoutRequest != null ? logoutRequest.refreshToken() : null);</span>
+<span class="fc" id="L153">		org.springframework.security.core.context.SecurityContextHolder.clearContext();</span>
+
+<span class="fc" id="L155">		return ResponseEntity.ok(</span>
+				new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+						true,
+						&quot;Logout successful&quot;,
+						null));
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

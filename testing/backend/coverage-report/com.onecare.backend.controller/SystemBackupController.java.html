@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemBackupController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">SystemBackupController.java</span></div><h1>SystemBackupController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.RestoreRequest;
+import com.onecare.backend.dto.response.BackupResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.BackupService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+import java.util.Map;
+
+@Tag(name = &quot;System Backup &amp; Restore&quot;, description = &quot;Clinic configuration: data backup &amp; recovery (FR010, UC5)&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/system&quot;)
+public class SystemBackupController {
+
+    private final BackupService backupService;
+
+<span class="fc" id="L33">    public SystemBackupController(BackupService backupService) {</span>
+<span class="fc" id="L34">        this.backupService = backupService;</span>
+<span class="fc" id="L35">    }</span>
+
+    @Operation(summary = &quot;Create a backup&quot;,
+            description = &quot;Runs a full data export, encrypted with AES-256-GCM (SDS 2.5.3), &quot;
+                    + &quot;and stores it with a timestamp. Requires SYSTEM_BACKUP (Super Admin).&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;201&quot;, description = &quot;Backup created&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SYSTEM_BACKUP permission&quot;)
+    })
+    @PostMapping(&quot;/backups&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SYSTEM_BACKUP + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;BackupResponse&gt;&gt; createBackup() {
+<span class="fc" id="L47">        BackupResponse response = backupService.createBackup();</span>
+<span class="fc" id="L48">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L49">                .body(new ApiResponse&lt;&gt;(true, &quot;Backup created successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;List backups&quot;,
+            description = &quot;Returns every stored backup with its timestamp, filename and size. &quot;
+                    + &quot;Requires SYSTEM_BACKUP (Super Admin); others get 403 (AC1).&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Backups listed&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SYSTEM_BACKUP permission&quot;)
+    })
+    @GetMapping(&quot;/backups&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SYSTEM_BACKUP + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;List&lt;BackupResponse&gt;&gt;&gt; listBackups() {
+<span class="fc" id="L62">        List&lt;BackupResponse&gt; response = backupService.listBackups();</span>
+<span class="fc" id="L63">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Backups retrieved successfully&quot;, response));</span>
+    }
+
+    @Operation(summary = &quot;Download a backup&quot;,
+            description = &quot;Streams the AES-256-GCM encrypted backup file as an attachment. &quot;
+                    + &quot;Requires SYSTEM_BACKUP (Super Admin); others get 403 (AC1).&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Backup downloaded&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SYSTEM_BACKUP permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Backup not found&quot;)
+    })
+    @GetMapping(&quot;/backups/{backupId}/download&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SYSTEM_BACKUP + &quot;')&quot;)
+    public ResponseEntity&lt;byte[]&gt; downloadBackup(@PathVariable Long backupId) {
+<span class="fc" id="L77">        BackupService.DownloadedBackup backup = backupService.downloadBackup(backupId);</span>
+<span class="fc" id="L78">        return ResponseEntity.ok()</span>
+<span class="fc" id="L79">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L80">                        &quot;attachment; filename=\&quot;&quot; + backup.filename() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L81">                .contentType(MediaType.APPLICATION_OCTET_STREAM)</span>
+<span class="fc" id="L82">                .contentLength(backup.content().length)</span>
+<span class="fc" id="L83">                .body(backup.content());</span>
+    }
+
+    @Operation(summary = &quot;Restore system data (destructive)&quot;,
+            description = &quot;Restores from a stored backupId or an uploaded encrypted backup file. &quot;
+                    + &quot;Always requires confirm=true (AC4): without it the request is rejected with &quot;
+                    + &quot;400 \&quot;Explicit confirmation required\&quot;. The restore replaces all exported data &quot;
+                    + &quot;and writes its audit entry after completion. Requires SYSTEM_RESTORE (Super Admin).&quot;)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Restore completed&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing confirmation, no source or invalid backup file&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing SYSTEM_RESTORE permission&quot;),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;404&quot;, description = &quot;Backup not found&quot;)
+    })
+    @PostMapping(&quot;/restore&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.SYSTEM_RESTORE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Map&lt;String, Integer&gt;&gt;&gt; restore(
+            @RequestParam(required = false) Long backupId,
+            @RequestParam(defaultValue = &quot;false&quot;) boolean confirm,
+            @RequestParam(required = false) MultipartFile file) {
+<span class="fc" id="L103">        RestoreRequest request = new RestoreRequest(backupId, confirm);</span>
+<span class="fc" id="L104">        Map&lt;String, Integer&gt; restored = backupService.restore(request, file);</span>
+<span class="fc" id="L105">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Restore completed successfully&quot;, restored));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

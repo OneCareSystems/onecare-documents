@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PatientController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">PatientController.java</span></div><h1>PatientController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.PatientCreateRequest;
+import com.onecare.backend.dto.request.PatientUpdateRequest;
+import com.onecare.backend.dto.response.PatientHistoryResponse;
+import com.onecare.backend.dto.response.PatientResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.PatientService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@Tag(name = &quot;Patients&quot;, description = &quot;Patient management APIs&quot;)
+@RestController
+@RequestMapping(&quot;/api/patients&quot;)
+public class PatientController {
+
+    private final PatientService patientService;
+
+<span class="fc" id="L29">    public PatientController(PatientService patientService) {</span>
+<span class="fc" id="L30">        this.patientService = patientService;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Operation(
+            summary = &quot;Register a patient&quot;,
+            description = &quot;Creates a patient with a system-generated patient ID. Any client-supplied ID is ignored. &quot;
+                    + &quot;If first name, last name and contact number match an existing patient, the record is still &quot;
+                    + &quot;created and the response contains duplicateSuspected=true.&quot;)
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PATIENT_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; createPatient(@Valid @RequestBody PatientCreateRequest request) {
+<span class="fc" id="L41">        PatientResponse response = patientService.createPatient(request);</span>
+<span class="fc" id="L42">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L43">                .body(new ApiResponse&lt;&gt;(true, &quot;Patient registered successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;List or search patients&quot;,
+            description = &quot;Paginated list (use page, size, sort). Optional 'search' filters by partial &quot;
+                    + &quot;name (case-insensitive), exact contact number, or exact patient ID, and paging &quot;
+                    + &quot;applies to the filtered results too. Blank 'search' returns 200 with an empty list.&quot;)
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PATIENT_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findAllPatients(
+            @Parameter(description = &quot;Partial name, exact contact number, or exact patient ID&quot;)
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
+
+<span class="fc" id="L58">        List&lt;PatientResponse&gt; patients = patientService.findAllPatients(search, pageable);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        String message = search != null ? &quot;Search results&quot; : &quot;Patients retrieved successfully&quot;;</span>
+<span class="fc" id="L60">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, message, patients));</span>
+    }
+
+    @Operation(
+            summary = &quot;Patient clinical history&quot;,
+            description = &quot;Returns a patient's previous encounters for clinical continuity: &quot;
+                    + &quot;past appointments (each with its clinical notes) and past prescriptions. &quot;
+                    + &quot;Doctor role only. 'Previous' means dated before today, plus any &quot;
+                    + &quot;already COMPLETED/CANCELLED appointment and any no-longer-ISSUED prescription. &quot;
+                    + &quot;Returns 404 when the patient does not exist.&quot;)
+    @GetMapping(&quot;/{patientId}/history&quot;)
+    @PreAuthorize(&quot;hasRole('DOCTOR')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;PatientHistoryResponse&gt;&gt; getPatientHistory(
+            @PathVariable Long patientId) {
+<span class="fc" id="L74">        PatientHistoryResponse response = patientService.getPatientHistory(patientId);</span>
+<span class="fc" id="L75">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Patient history retrieved successfully&quot;, response));
+    }
+
+    @Operation(summary = &quot;Get a patient by ID&quot;)
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(
+            &quot;hasAuthority('&quot; + Permission.PATIENT_READ_ALL + &quot;')&quot;
+                    + &quot; or hasAuthority('&quot; + Permission.PATIENT_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findPatientById(@PathVariable Long id) {
+<span class="fc" id="L85">        PatientResponse response = patientService.findPatientById(id);</span>
+<span class="fc" id="L86">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Patient retrieved successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;Update a patient&quot;,
+            description = &quot;Partial update: only the fields sent are changed. Roles without PATIENT_UPDATE &quot;
+                    + &quot;(for example Pharmacist) receive 403 Forbidden.&quot;)
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PATIENT_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; updatePatient(@PathVariable Long id,
+                                                         @Valid @RequestBody PatientUpdateRequest request) {
+<span class="nc" id="L97">        PatientResponse response = patientService.updatePatient(id, request);</span>
+<span class="nc" id="L98">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Patient updated successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;Deactivate a patient&quot;,
+            description = &quot;Soft delete only: sets isActive=false. The record is never physically removed.&quot;)
+    @DeleteMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PATIENT_DELETE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; deletePatient(@PathVariable Long id) {
+<span class="fc" id="L107">        patientService.deactivatePatient(id);</span>
+<span class="fc" id="L108">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Patient deactivated successfully&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

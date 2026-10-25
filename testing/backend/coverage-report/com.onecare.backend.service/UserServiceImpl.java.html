@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">UserServiceImpl.java</span></div><h1>UserServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.AssignRoleRequest;
+import com.onecare.backend.dto.request.UserCreateRequest;
+import com.onecare.backend.dto.request.UserUpdateRequest;
+import com.onecare.backend.dto.response.UserResponse;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.exception.DuplicateUserException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.ClientIpResolver;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+
+@Service
+@Transactional
+public class UserServiceImpl implements UserService {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);</span>
+
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
+
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
+<span class="fc" id="L39">                           AuditService auditService) {</span>
+<span class="fc" id="L40">        this.userRepository = userRepository;</span>
+<span class="fc" id="L41">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L42">        this.auditService = auditService;</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    public boolean recordFailedAttempt(User user) {
+
+<span class="fc" id="L48">        userRepository.recordFailedAttempt(user.getUserId());</span>
+
+<span class="fc" id="L50">        User updatedUser = findUserByIdInternal(user.getUserId());</span>
+
+<span class="fc" id="L52">        int failedAttempts = updatedUser.getFailedAttempts();</span>
+
+<span class="fc" id="L54">        log.warn(</span>
+                &quot;Authentication failed | username={} | role={} | failedAttempts={}&quot;,
+<span class="fc" id="L56">                updatedUser.getUsername(),</span>
+<span class="fc" id="L57">                updatedUser.getRole(),</span>
+<span class="fc" id="L58">                failedAttempts</span>
+        );
+
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        boolean accountLocked = failedAttempts &gt;= MAX_FAILED_ATTEMPTS;</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (accountLocked) {</span>
+<span class="fc" id="L64">            updatedUser.setLockedUntil(LocalDateTime.now().plusMinutes(15));</span>
+
+<span class="fc" id="L66">            log.warn(</span>
+                    &quot;Account locked | username={} | role={} | failedAttempts={} | lockedUntil={}&quot;,
+<span class="fc" id="L68">                    updatedUser.getUsername(),</span>
+<span class="fc" id="L69">                    updatedUser.getRole(),</span>
+<span class="fc" id="L70">                    failedAttempts,</span>
+<span class="fc" id="L71">                    updatedUser.getLockedUntil()</span>
+            );
+
+<span class="fc" id="L74">            auditService.record(</span>
+                    updatedUser,
+                    &quot;ACCOUNT_LOCKED&quot;,
+                    &quot;AUTH&quot;,
+<span class="fc" id="L78">                    String.valueOf(updatedUser.getUserId()),</span>
+                    &quot;Account locked after &quot; + failedAttempts + &quot; failed login attempts&quot;,
+<span class="fc" id="L80">                    ClientIpResolver.resolveCurrentRequest());</span>
+        }
+
+<span class="fc" id="L83">        return accountLocked;</span>
+    }
+
+    /**
+     * Resets the failed-login state after successful authentication.
+     */
+    @Override
+    public void recordSuccessfulLogin(User user) {
+
+<span class="fc" id="L92">        user.setFailedAttempts(0);</span>
+<span class="fc" id="L93">        user.setLockedUntil(null);</span>
+<span class="fc" id="L94">        user.setLastLogin(LocalDateTime.now());</span>
+
+<span class="fc" id="L96">        log.info(</span>
+                &quot;Successful login | username={} | role={}&quot;,
+<span class="fc" id="L98">                user.getUsername(),</span>
+<span class="fc" id="L99">                user.getRole()</span>
+        );
+<span class="fc" id="L101">    }</span>
+
+    @Override
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_ROLE_ASSIGN + &quot;')&quot;)
+    @Audited(action = &quot;ACCOUNT_UNLOCKED&quot;, module = &quot;USER&quot;)
+    public UserResponse unlockAccount(Long id) {
+
+<span class="fc" id="L108">        User user = findUserByIdInternal(id);</span>
+
+<span class="fc" id="L110">        user.setFailedAttempts(0);</span>
+<span class="fc" id="L111">        user.setLockedUntil(null);</span>
+
+<span class="fc" id="L113">        String performedBy = SecurityUtil.getCurrentUsername()</span>
+<span class="fc" id="L114">                .orElse(&quot;SYSTEM&quot;);</span>
+
+<span class="fc" id="L116">        log.info(</span>
+                &quot;Account unlocked | targetUser={} | targetRole={} | performedBy={}&quot;,
+<span class="fc" id="L118">                user.getUsername(),</span>
+<span class="fc" id="L119">                user.getRole(),</span>
+                performedBy
+        );
+
+<span class="fc" id="L123">        return toResponse(user);</span>
+    }
+
+
+    @Override
+    public boolean isAccountLocked(User user) {
+
+<span class="fc" id="L130">        LocalDateTime lockedUntil = user.getLockedUntil();</span>
+
+        // No active lock
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (lockedUntil == null) {</span>
+<span class="fc" id="L134">            return false;</span>
+        }
+
+        // Lock has expired
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (!lockedUntil.isAfter(LocalDateTime.now())) {</span>
+
+<span class="fc" id="L140">            user.setFailedAttempts(0);</span>
+<span class="fc" id="L141">            user.setLockedUntil(null);</span>
+
+<span class="fc" id="L143">            log.info(</span>
+                    &quot;Account lock expired | username={} | role={}&quot;,
+<span class="fc" id="L145">                    user.getUsername(),</span>
+<span class="fc" id="L146">                    user.getRole()</span>
+            );
+
+<span class="fc" id="L149">            return false;</span>
+        }
+
+<span class="nc" id="L152">        return true;</span>
+    }
+
+    // =====================================================================
+    // NEW — DDP-18 User &amp; Access Management APIs
+    // =====================================================================
+
+    @Override
+    @Audited(action = &quot;USER_CREATE&quot;, module = &quot;USER&quot;)
+    public UserResponse createUser(UserCreateRequest request) {
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (userRepository.existsByUsername(request.username())</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                || userRepository.existsByEmail(request.email())) {</span>
+<span class="fc" id="L165">            throw new DuplicateUserException(&quot;Username or email already exists&quot;);</span>
+        }
+
+<span class="fc" id="L168">        User user = new User();</span>
+<span class="fc" id="L169">        user.setUsername(request.username());</span>
+<span class="fc" id="L170">        user.setEmail(request.email());</span>
+<span class="fc" id="L171">        user.setPasswordHash(passwordEncoder.encode(request.password()));</span>
+<span class="fc" id="L172">        user.setRole(request.role());</span>
+<span class="fc" id="L173">        user.setIsActive(true);</span>
+        // failedAttempts / lockedUntil left untouched — entity field defaults apply
+
+<span class="fc" id="L176">        User saved = userRepository.save(user);</span>
+
+<span class="fc" id="L178">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L179">        log.info(&quot;User {} created by {}&quot;, saved.getUsername(), performedBy);</span>
+
+<span class="fc" id="L181">        return toResponse(saved);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page&lt;UserResponse&gt; findAllUsers(Pageable pageable) {
+<span class="fc" id="L187">        return userRepository.findAll(pageable).map(this::toResponse);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponse findUserById(Long id) {
+<span class="nc" id="L193">        return toResponse(findUserByIdInternal(id));</span>
+    }
+
+    @Override
+    @Audited(action = &quot;USER_UPDATE&quot;, module = &quot;USER&quot;)
+    public UserResponse updateUser(Long id, UserUpdateRequest request) {
+
+<span class="nc" id="L200">        User user = findUserByIdInternal(id);</span>
+
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (request.email() != null</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">                &amp;&amp; !request.email().equals(user.getEmail())</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                &amp;&amp; userRepository.existsByEmail(request.email())) {</span>
+<span class="nc" id="L205">            throw new DuplicateUserException(&quot;Email already exists&quot;);</span>
+        }
+
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (request.email() != null) {</span>
+<span class="nc" id="L209">            user.setEmail(request.email());</span>
+        }
+
+<span class="nc" id="L212">        User saved = userRepository.save(user);</span>
+
+<span class="nc" id="L214">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="nc" id="L215">        log.info(&quot;User {} updated by {}&quot;, saved.getUsername(), performedBy);</span>
+
+<span class="nc" id="L217">        return toResponse(saved);</span>
+    }
+
+    @Override
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.USER_ROLE_ASSIGN + &quot;')&quot;)
+    @Audited(action = &quot;ROLE_ASSIGNED&quot;, module = &quot;USER&quot;)
+    public UserResponse assignRoleToUser(Long id, AssignRoleRequest request) {
+
+<span class="nc" id="L225">        User user = findUserByIdInternal(id);</span>
+<span class="nc" id="L226">        user.setRole(request.role());</span>
+
+<span class="nc" id="L228">        User saved = userRepository.save(user);</span>
+
+<span class="nc" id="L230">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="nc" id="L231">        log.info(</span>
+                &quot;Role changed | targetUser={} | newRole={} | performedBy={}&quot;,
+<span class="nc" id="L233">                saved.getUsername(),</span>
+<span class="nc" id="L234">                saved.getRole(),</span>
+                performedBy
+        );
+
+<span class="nc" id="L238">        return toResponse(saved);</span>
+    }
+
+    @Override
+    @Audited(action = &quot;USER_DEACTIVATE&quot;, module = &quot;USER&quot;)
+    public void deactivateUser(Long id) {
+
+<span class="fc" id="L245">        User user = findUserByIdInternal(id);</span>
+<span class="fc" id="L246">        user.setIsActive(false); // soft delete — row is never removed</span>
+
+<span class="fc" id="L248">        userRepository.save(user);</span>
+
+<span class="fc" id="L250">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L251">        log.info(&quot;User {} deactivated by {}&quot;, user.getUsername(), performedBy);</span>
+<span class="fc" id="L252">    }</span>
+
+    private User findUserByIdInternal(Long id) {
+
+<span class="fc" id="L256">        return userRepository.findById(id)</span>
+<span class="fc" id="L257">                .orElseThrow(() -&gt;</span>
+<span class="nc" id="L258">                        new ResourceNotFoundException(&quot;User not found with id: &quot; + id)</span>
+                );
+    }
+
+    private UserResponse toResponse(User user) {
+
+<span class="fc" id="L264">        return new UserResponse(</span>
+<span class="fc" id="L265">                user.getUserId(),</span>
+<span class="fc" id="L266">                user.getUsername(),</span>
+<span class="fc" id="L267">                user.getEmail(),</span>
+<span class="fc" id="L268">                user.getRole(),</span>
+<span class="fc" id="L269">                user.getIsActive(),</span>
+<span class="fc" id="L270">                user.getFailedAttempts(),</span>
+<span class="fc" id="L271">                user.getLockedUntil(),</span>
+<span class="fc" id="L272">                user.getCreatedAt(),</span>
+<span class="fc" id="L273">                user.getUpdatedAt()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrescriptionDispensingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">PrescriptionDispensingService.java</span></div><h1>PrescriptionDispensingService.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.StockUpdateRequest;
+import com.onecare.backend.dto.response.DispensePreviewResponse;
+import com.onecare.backend.dto.response.PrescriptionResponse;
+import com.onecare.backend.entity.*;
+import com.onecare.backend.enums.PrescriptionItemType;
+import com.onecare.backend.enums.PrescriptionStatus;
+import com.onecare.backend.exception.*;
+import com.onecare.backend.repository.MedicineRepository;
+import com.onecare.backend.repository.PrescriptionRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+
+@Service
+public class PrescriptionDispensingService {
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    private final PrescriptionRepository prescriptions;
+    private final MedicineRepository medicines;
+    private final MedicineService medicineService;
+
+    public PrescriptionDispensingService(PrescriptionRepository prescriptions,
+<span class="fc" id="L28">            MedicineRepository medicines, MedicineService medicineService) {</span>
+<span class="fc" id="L29">        this.prescriptions = prescriptions;</span>
+<span class="fc" id="L30">        this.medicines = medicines;</span>
+<span class="fc" id="L31">        this.medicineService = medicineService;</span>
+<span class="fc" id="L32">    }</span>
+
+    @Transactional(readOnly = true)
+    public DispensePreviewResponse preview(Long id) {
+<span class="fc" id="L36">        Prescription prescription = prescriptions.findById(id).orElseThrow(() -&gt; notFound(id));</span>
+<span class="fc" id="L37">        PrescriptionServiceImpl.checkViewAccess(prescription);</span>
+<span class="fc" id="L38">        return buildPreview(prescription);</span>
+    }
+
+    @Transactional
+    @Audited(action = &quot;PRESCRIPTION_DISPENSE&quot;, module = &quot;PRESCRIPTION&quot;, entityIdParameter = &quot;id&quot;)
+    public PrescriptionResponse dispense(Long id, boolean confirmPartial) {
+        // Scalar read does not populate the persistence context. After waiting for
+        // the row lock we can distinguish an overlapping request from a later retry.
+<span class="fc" id="L46">        Long revision = prescriptions.findDispenseRevision(id).orElseThrow(() -&gt; notFound(id));</span>
+<span class="pc" id="L47">        Prescription prescription = prescriptions.findByIdForDispensing(id).orElseThrow(() -&gt; notFound(id));</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (revision != prescription.getDispenseRevision()) {</span>
+<span class="fc" id="L49">            throw new ConflictException(&quot;Prescription was dispensed by another request. Please refresh.&quot;);</span>
+        }
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (prescription.getStatus() != PrescriptionStatus.ISSUED</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                &amp;&amp; prescription.getStatus() != PrescriptionStatus.PARTIALLY_DISPENSED) {</span>
+<span class="fc" id="L53">            throw new BusinessRuleException(&quot;Prescription already dispensed&quot;);</span>
+        }
+
+        // Lock distinct medicines in stable order, including shared lines, before
+        // calculating availability. This also serializes different prescriptions.
+<span class="fc" id="L58">        Map&lt;Long, Medicine&gt; locked = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L59">        prescription.getItems().stream().filter(this::inHouse)</span>
+<span class="fc" id="L60">                .map(PrescriptionItem::getMedicine).filter(Objects::nonNull)</span>
+<span class="fc" id="L61">                .map(Medicine::getMedicineId).distinct().sorted().forEach(medicineId -&gt;</span>
+<span class="fc" id="L62">                    locked.put(medicineId, medicines.findByIdForUpdate(medicineId)</span>
+<span class="pc" id="L63">                            .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Medicine not found with id: &quot; + medicineId))));</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for (PrescriptionItem item : prescription.getItems()) {</span>
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">            if (inHouse(item) &amp;&amp; item.getMedicine() != null) {</span>
+<span class="fc" id="L66">                item.setMedicine(locked.get(item.getMedicine().getMedicineId()));</span>
+            }
+<span class="fc" id="L68">        }</span>
+<span class="fc" id="L69">        locked.values().forEach(medicine -&gt; entityManager.refresh(medicine, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));</span>
+<span class="fc" id="L70">        DispensePreviewResponse preview = buildPreview(prescription);</span>
+        // Unsafe medicines block the operation even when partial dispensing is confirmed.
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (PrescriptionItem item : prescription.getItems()) {</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">            if (inHouse(item) &amp;&amp; remaining(item) &gt; 0) {</span>
+<span class="fc" id="L74">                String reason = DispensingRules.unavailableReason(item.getMedicine());</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                if (reason != null) throw new BusinessRuleException(reason);</span>
+            }
+<span class="fc" id="L77">        }</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!confirmPartial &amp;&amp; prescription.getItems().stream().filter(this::inHouse)</span>
+<span class="fc bfc" id="L79" title="All 4 branches covered.">                .anyMatch(item -&gt; preview.items().get(prescription.getItems().indexOf(item)).shortfallQuantity() &gt; 0)) {</span>
+<span class="fc" id="L80">            throw new StockShortfallException(preview);</span>
+        }
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        for (int index = 0; index &lt; prescription.getItems().size(); index++) {</span>
+<span class="fc" id="L84">            PrescriptionItem item = prescription.getItems().get(index);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (!inHouse(item)) continue;</span>
+<span class="fc" id="L86">            DispensePreviewResponse.Item planned = preview.items().get(index);</span>
+<span class="fc" id="L87">            int quantity = DispensingRules.quantityToDispense(remaining(item), planned.availableStock());</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (quantity &gt; 0) {</span>
+<span class="fc" id="L89">                medicineService.updateStock(item.getMedicine().getMedicineId(), new StockUpdateRequest(-quantity));</span>
+                // Freeze the price on first handover; follow-ups use the same price.
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (item.getUnitPrice() == null) item.setUnitPrice(item.getMedicine().getPrice());</span>
+<span class="fc" id="L92">                item.setQuantityDispensed(item.getQuantityDispensed() + quantity);</span>
+            }
+        }
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        boolean remaining = prescription.getItems().stream().filter(this::inHouse).anyMatch(i -&gt; remaining(i) &gt; 0);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        prescription.setStatus(remaining ? PrescriptionStatus.PARTIALLY_DISPENSED : PrescriptionStatus.DISPENSED);</span>
+<span class="fc" id="L97">        prescription.setDispenseRevision(prescription.getDispenseRevision() + 1);</span>
+<span class="fc" id="L98">        return PrescriptionResponse.from(prescriptions.save(prescription));</span>
+    }
+
+    private DispensePreviewResponse buildPreview(Prescription prescription) {
+<span class="fc" id="L102">        Map&lt;Long, Integer&gt; available = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L103">        List&lt;DispensePreviewResponse.Item&gt; items = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (PrescriptionItem item : prescription.getItems()) {</span>
+<span class="fc" id="L105">            Medicine medicine = item.getMedicine();</span>
+<span class="fc" id="L106">            int remaining = remaining(item);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            String reason = inHouse(item) ? DispensingRules.unavailableReason(medicine) : &quot;External purchase item&quot;;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            int stock = medicine == null ? 0 : available.computeIfAbsent(medicine.getMedicineId(),</span>
+<span class="fc" id="L109">                    key -&gt; Math.max(0, medicine.getStockQuantity()));</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            int quantity = reason == null ? DispensingRules.quantityToDispense(remaining, stock) : 0;</span>
+<span class="fc" id="L111">            int shortfall = remaining - quantity;</span>
+<span class="fc bfc" id="L112" title="All 4 branches covered.">            if (medicine != null &amp;&amp; reason == null) available.put(medicine.getMedicineId(), stock - quantity);</span>
+<span class="fc bfc" id="L113" title="All 4 branches covered.">            if (reason == null &amp;&amp; shortfall &gt; 0) reason = &quot;Insufficient stock&quot;;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            items.add(new DispensePreviewResponse.Item(item.getItemId(), medicine == null ? null : medicine.getMedicineId(),</span>
+<span class="fc" id="L115">                    item.getQuantity(), item.getQuantityDispensed(), remaining, stock,</span>
+<span class="pc bpc" id="L116" title="1 of 8 branches missed.">                    item.getUnitPrice() != null ? item.getUnitPrice() : medicine == null ? null : medicine.getPrice(),</span>
+                    reason == null &amp;&amp; remaining &gt; 0, shortfall, reason));
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">        return new DispensePreviewResponse(prescription.getPrescriptionId(), prescription.getPatient().getPatientId(),</span>
+<span class="fc" id="L120">                prescription.getStatus(), items);</span>
+    }
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">    private boolean inHouse(PrescriptionItem item) { return item.getItemType() == PrescriptionItemType.IN_HOUSE; }</span>
+<span class="fc" id="L124">    private int remaining(PrescriptionItem item) { return Math.max(0, item.getQuantity() - item.getQuantityDispensed()); }</span>
+<span class="fc" id="L125">    private ResourceNotFoundException notFound(Long id) { return new ResourceNotFoundException(&quot;Prescription not found with id: &quot; + id); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

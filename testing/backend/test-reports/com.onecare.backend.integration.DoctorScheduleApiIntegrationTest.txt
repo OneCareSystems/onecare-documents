@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.onecare.backend.integration.DoctorScheduleApiIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.807 s -- in com.onecare.backend.integration.DoctorScheduleApiIntegrationTest

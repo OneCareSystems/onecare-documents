@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoctorScheduleServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">DoctorScheduleServiceImpl.java</span></div><h1>DoctorScheduleServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.dto.request.DayScheduleRequest;
+import com.onecare.backend.dto.request.DoctorScheduleRequest;
+import com.onecare.backend.dto.request.TimeSlotRequest;
+import com.onecare.backend.dto.response.DayScheduleResponse;
+
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
+
+import com.onecare.backend.dto.response.DoctorScheduleResponse;
+import com.onecare.backend.dto.response.ScheduleConflictResponse;
+import com.onecare.backend.entity.AuditLog;
+import com.onecare.backend.entity.DoctorSchedule;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.Role;
+import com.onecare.backend.exception.BusinessRuleException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.exception.TimeSlotConflictException;
+import com.onecare.backend.repository.AuditLogRepository;
+import com.onecare.backend.repository.DoctorScheduleRepository;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * Doctor schedule configuration (FR009, UC4). Saving a schedule replaces the
+ * doctor's previous one and rejects overlapping time slots with 400
+ * &quot;Time slot conflict&quot; plus the conflicting ranges (UC4 alt flow).
+ */
+@Service
+public class DoctorScheduleServiceImpl implements DoctorScheduleService {
+
+<span class="fc" id="L48">    private static final Logger log = LoggerFactory.getLogger(DoctorScheduleServiceImpl.class);</span>
+<span class="fc" id="L49">    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern(&quot;HH:mm&quot;);</span>
+
+    private final DoctorScheduleRepository doctorScheduleRepository;
+    private final UserRepository userRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final LocalTime defaultStartTime;
+    private final LocalTime defaultEndTime;
+
+    public DoctorScheduleServiceImpl(DoctorScheduleRepository doctorScheduleRepository,
+            UserRepository userRepository,
+            AuditLogRepository auditLogRepository,
+            @Value(&quot;${clinic.operating-hours.start-time:16:00}&quot;)
+            String defaultStartTimeStr,
+            @Value(&quot;${clinic.operating-hours.end-time:21:00}&quot;)
+<span class="fc" id="L63">            String defaultEndTimeStr) {</span>
+<span class="fc" id="L64">        this.doctorScheduleRepository = doctorScheduleRepository;</span>
+<span class="fc" id="L65">        this.userRepository = userRepository;</span>
+<span class="fc" id="L66">        this.auditLogRepository = auditLogRepository;</span>
+<span class="fc" id="L67">        this.defaultStartTime = LocalTime.parse(defaultStartTimeStr);</span>
+<span class="fc" id="L68">        this.defaultEndTime = LocalTime.parse(defaultEndTimeStr);</span>
+<span class="fc" id="L69">    }</span>
+
+    @Override
+    @Transactional
+    public DoctorScheduleResponse getSchedule(Long doctorId) {
+<span class="fc" id="L74">        User doctor = findDoctor(doctorId);</span>
+<span class="fc" id="L75">        assertCanRead(doctor);</span>
+
+<span class="fc" id="L77">        provisionDefaultScheduleIfNeeded(doctor);</span>
+
+<span class="fc" id="L79">        List&lt;DoctorSchedule&gt; rows = doctorScheduleRepository</span>
+<span class="fc" id="L80">                .findByDoctorUserIdOrderByStartTimeAsc(doctor.getUserId());</span>
+<span class="fc" id="L81">        return toResponse(doctor.getUserId(), rows);</span>
+    }
+
+    /**
+     * An active doctor without any configured schedule automatically works the
+     * default window (4 PM - 9 PM, from clinic.operating-hours.*) every day of
+     * the week, so their time is bookable instead of showing as empty. The
+     * rows are materialised once; a Super Admin's explicit save later replaces
+     * them. Inactive doctors and doctors with an existing schedule are left
+     * untouched.
+     */
+    private void provisionDefaultScheduleIfNeeded(User doctor) {
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        if (doctor.getRole() != Role.DOCTOR || !Boolean.TRUE.equals(doctor.getIsActive())) {</span>
+<span class="fc" id="L94">            return;</span>
+        }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (!doctorScheduleRepository.findByDoctorUserIdOrderByStartTimeAsc(doctor.getUserId()).isEmpty()) {</span>
+<span class="fc" id="L97">            return;</span>
+        }
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (DayOfWeek day : DayOfWeek.values()) {</span>
+<span class="fc" id="L101">            DoctorSchedule row = new DoctorSchedule();</span>
+<span class="fc" id="L102">            row.setDoctor(doctor);</span>
+<span class="fc" id="L103">            row.setDayOfWeek(day);</span>
+<span class="fc" id="L104">            row.setStartTime(defaultStartTime);</span>
+<span class="fc" id="L105">            row.setEndTime(defaultEndTime);</span>
+<span class="fc" id="L106">            row.setAvailable(true);</span>
+<span class="fc" id="L107">            doctorScheduleRepository.save(row);</span>
+        }
+<span class="fc" id="L109">        log.info(</span>
+                &quot;Provisioned default schedule {}-{} (all days) for active doctor {} without a configured schedule&quot;,
+<span class="fc" id="L111">                defaultStartTime, defaultEndTime, doctor.getUserId());</span>
+<span class="fc" id="L112">    }</span>
+
+    @Override
+    @Transactional
+    public DoctorScheduleResponse saveSchedule(
+            Long doctorId,
+            DoctorScheduleRequest request
+    ) {
+<span class="fc" id="L120">        User doctor = findDoctor(doctorId);</span>
+
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">        if (request.days() == null || request.days().isEmpty()) {</span>
+<span class="nc" id="L123">            throw new BusinessRuleException(</span>
+                    &quot;The weekly schedule must include all seven days&quot;);
+        }
+
+<span class="fc" id="L127">        Map&lt;DayOfWeek, List&lt;TimeSlotRequest&gt;&gt; slotsByDay =</span>
+                new EnumMap&lt;&gt;(DayOfWeek.class);
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (DayScheduleRequest dayRequest : request.days()) {</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            if (dayRequest == null || dayRequest.dayOfWeek() == null) {</span>
+<span class="nc" id="L132">                throw new BusinessRuleException(</span>
+                        &quot;Every schedule entry must specify a day of the week&quot;);
+            }
+
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">            if (slotsByDay.containsKey(dayRequest.dayOfWeek())) {</span>
+<span class="nc" id="L137">                throw new BusinessRuleException(</span>
+<span class="nc" id="L138">                        &quot;Duplicate schedule entry for &quot; + dayRequest.dayOfWeek());</span>
+            }
+
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (dayRequest.timeSlots() == null) {</span>
+<span class="nc" id="L142">                throw new BusinessRuleException(</span>
+<span class="nc" id="L143">                        &quot;Time slots are required for &quot; + dayRequest.dayOfWeek()</span>
+                                + &quot;; use an empty list for a day off&quot;);
+            }
+
+<span class="fc" id="L147">            slotsByDay.put(</span>
+<span class="fc" id="L148">                    dayRequest.dayOfWeek(),</span>
+<span class="fc" id="L149">                    validateAndSortSlots(dayRequest.timeSlots())</span>
+            );
+<span class="fc" id="L151">        }</span>
+
+<span class="fc" id="L153">        Set&lt;DayOfWeek&gt; missingDays = EnumSet.allOf(DayOfWeek.class);</span>
+<span class="fc" id="L154">        missingDays.removeAll(slotsByDay.keySet());</span>
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (!missingDays.isEmpty()) {</span>
+<span class="fc" id="L157">            throw new BusinessRuleException(</span>
+                    &quot;Include every day in the weekly schedule. Missing: &quot;
+                            + missingDays);
+        }
+
+        // Replace the previous schedule inside the same transaction.
+<span class="fc" id="L163">        doctorScheduleRepository.deleteByDoctorUserId(doctor.getUserId());</span>
+<span class="fc" id="L164">        doctorScheduleRepository.flush();</span>
+
+<span class="fc" id="L166">        List&lt;DoctorSchedule&gt; saved = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        for (DayOfWeek day : DayOfWeek.values()) {</span>
+<span class="fc" id="L169">            List&lt;TimeSlotRequest&gt; slots = slotsByDay.get(day);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (slots.isEmpty()) {</span>
+<span class="fc" id="L171">                DoctorSchedule row = new DoctorSchedule();</span>
+<span class="fc" id="L172">                row.setDoctor(doctor);</span>
+<span class="fc" id="L173">                row.setDayOfWeek(day);</span>
+<span class="fc" id="L174">                row.setAvailable(false);</span>
+<span class="fc" id="L175">                saved.add(doctorScheduleRepository.save(row));</span>
+<span class="fc" id="L176">                continue;</span>
+            }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            for (TimeSlotRequest slot : slots) {</span>
+<span class="fc" id="L179">                DoctorSchedule row = new DoctorSchedule();</span>
+<span class="fc" id="L180">                row.setDoctor(doctor);</span>
+<span class="fc" id="L181">                row.setDayOfWeek(day);</span>
+<span class="fc" id="L182">                row.setStartTime(LocalTime.parse(slot.start(), TIME_FORMAT));</span>
+<span class="fc" id="L183">                row.setEndTime(LocalTime.parse(slot.end(), TIME_FORMAT));</span>
+<span class="fc" id="L184">                row.setAvailable(true);</span>
+<span class="fc" id="L185">                saved.add(doctorScheduleRepository.save(row));</span>
+<span class="fc" id="L186">            }</span>
+        }
+
+<span class="fc" id="L189">        writeAudit(doctor);</span>
+
+<span class="fc" id="L191">        log.info(</span>
+                &quot;Saved weekly schedule for doctor {} with {} configured time slot(s)&quot;,
+<span class="fc" id="L193">                doctor.getUserId(),</span>
+<span class="fc" id="L194">                saved.size()</span>
+        );
+
+<span class="fc" id="L197">        return toResponse(doctor.getUserId(), saved);</span>
+    }
+    /**
+     * UC4 alt flow: slots are sorted and every adjacent pair checked, which
+     * detects any overlap among intervals. Duplicates therefore surface as
+     * conflicts too. Invalid ranges (end &lt;= start) are a plain 400.
+     */
+    private List&lt;TimeSlotRequest&gt; validateAndSortSlots(List&lt;TimeSlotRequest&gt; slots) {
+<span class="fc" id="L205">        List&lt;TimeSlotRequest&gt; sorted = slots.stream()</span>
+<span class="fc" id="L206">                .sorted(Comparator.comparing(TimeSlotRequest::start))</span>
+<span class="fc" id="L207">                .toList();</span>
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (TimeSlotRequest slot : sorted) {</span>
+<span class="fc" id="L210">            LocalTime start = LocalTime.parse(slot.start(), TIME_FORMAT);</span>
+<span class="fc" id="L211">            LocalTime end = LocalTime.parse(slot.end(), TIME_FORMAT);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (!end.isAfter(start)) {</span>
+<span class="fc" id="L213">                throw new BusinessRuleException(</span>
+<span class="fc" id="L214">                        &quot;Invalid time slot &quot; + slot.start() + &quot;-&quot; + slot.end() + &quot;: end must be after start&quot;);</span>
+            }
+<span class="fc" id="L216">        }</span>
+
+<span class="fc" id="L218">        List&lt;ScheduleConflictResponse.TimeSlotRange&gt; conflicting = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (int i = 1; i &lt; sorted.size(); i++) {</span>
+<span class="fc" id="L220">            TimeSlotRequest previous = sorted.get(i - 1);</span>
+<span class="fc" id="L221">            TimeSlotRequest current = sorted.get(i);</span>
+            // overlap when the next slot starts before the previous one ends
+<span class="fc" id="L223">            if (LocalTime.parse(current.start(), TIME_FORMAT)</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                    .isBefore(LocalTime.parse(previous.end(), TIME_FORMAT))) {</span>
+<span class="fc" id="L225">                conflicting.add(new ScheduleConflictResponse.TimeSlotRange(previous.start(), previous.end()));</span>
+<span class="fc" id="L226">                conflicting.add(new ScheduleConflictResponse.TimeSlotRange(current.start(), current.end()));</span>
+            }
+        }
+
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (!conflicting.isEmpty()) {</span>
+<span class="fc" id="L231">            throw new TimeSlotConflictException(new ScheduleConflictResponse(conflicting));</span>
+        }
+<span class="fc" id="L233">        return sorted;</span>
+    }
+
+    private User findDoctor(Long doctorId) {
+<span class="pc bpc" id="L237" title="2 of 4 branches missed.">        if (doctorId == null || doctorId &lt;= 0) {</span>
+<span class="nc" id="L238">            throw new BusinessRuleException(&quot;Doctor ID must be a positive number&quot;);</span>
+        }
+<span class="fc" id="L240">        User user = userRepository.findById(doctorId)</span>
+<span class="fc" id="L241">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + doctorId));</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (user.getRole() != Role.DOCTOR) {</span>
+<span class="nc" id="L243">            throw new BusinessRuleException(&quot;User with id &quot; + doctorId + &quot; is not a doctor&quot;);</span>
+        }
+<span class="fc" id="L245">        return user;</span>
+    }
+
+    /** Reading a schedule is open to admins and to the doctor themselves. */
+    private void assertCanRead(User doctor) {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (SecurityUtil.hasPermission(com.onecare.backend.security.Permission.SCHEDULE_MANAGE)) {</span>
+<span class="fc" id="L251">            return;</span>
+        }
+<span class="fc" id="L253">        Long currentUserId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+<span class="fc bfc" id="L254" title="All 4 branches covered.">        if (currentUserId == null || !currentUserId.equals(doctor.getUserId())) {</span>
+<span class="fc" id="L255">            throw new AccessDeniedException(&quot;Doctors can only read their own schedule&quot;);</span>
+        }
+<span class="fc" id="L257">    }</span>
+
+    private void writeAudit(User doctor) {
+<span class="fc" id="L260">        SecurityUtil.getCurrentUserId()</span>
+<span class="fc" id="L261">                .flatMap(userRepository::findById)</span>
+<span class="fc" id="L262">                .ifPresent(actor -&gt; {</span>
+<span class="fc" id="L263">                    AuditLog audit = new AuditLog();</span>
+<span class="fc" id="L264">                    audit.setUser(actor);</span>
+<span class="fc" id="L265">                    audit.setAction(&quot;SCHEDULE_UPDATE&quot;);</span>
+<span class="fc" id="L266">                    audit.setActionType(&quot;UPDATE&quot;);</span>
+<span class="fc" id="L267">                    audit.setTimestamp(java.time.LocalDateTime.now());</span>
+<span class="fc" id="L268">                    audit.setEntityType(&quot;DoctorSchedule&quot;);</span>
+<span class="fc" id="L269">                    audit.setEntityId(String.valueOf(doctor.getUserId()));</span>
+<span class="fc" id="L270">                    audit.setDescription(&quot;Updated schedule for doctor &quot; + doctor.getUserId());</span>
+<span class="fc" id="L271">                    auditLogRepository.save(audit);</span>
+<span class="fc" id="L272">                });</span>
+<span class="fc" id="L273">    }</span>
+
+    private DoctorScheduleResponse toResponse(
+            Long doctorId,
+            List&lt;DoctorSchedule&gt; rows
+    ) {
+<span class="fc" id="L279">        Map&lt;DayOfWeek, List&lt;ScheduleConflictResponse.TimeSlotRange&gt;&gt; slotsByDay =</span>
+                new EnumMap&lt;&gt;(DayOfWeek.class);
+
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (DayOfWeek day : DayOfWeek.values()) {</span>
+<span class="fc" id="L283">            slotsByDay.put(day, new ArrayList&lt;&gt;());</span>
+        }
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        for (DoctorSchedule row : rows) {</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (!row.isAvailable()) {</span>
+<span class="fc" id="L288">                continue;</span>
+            }
+<span class="fc" id="L290">            slotsByDay.get(row.getDayOfWeek()).add(</span>
+                    new ScheduleConflictResponse.TimeSlotRange(
+<span class="fc" id="L292">                            row.getStartTime().format(TIME_FORMAT),</span>
+<span class="fc" id="L293">                            row.getEndTime().format(TIME_FORMAT)</span>
+                    )
+            );
+<span class="fc" id="L296">        }</span>
+
+<span class="fc" id="L298">        List&lt;DayScheduleResponse&gt; days = List.of(DayOfWeek.values()).stream()</span>
+<span class="fc" id="L299">                .map(day -&gt; new DayScheduleResponse(</span>
+                        day,
+<span class="fc" id="L301">                        slotsByDay.get(day).stream()</span>
+<span class="fc" id="L302">                                .sorted(Comparator.comparing(</span>
+                                        ScheduleConflictResponse.TimeSlotRange::start))
+<span class="fc" id="L304">                                .toList()</span>
+                ))
+<span class="fc" id="L306">                .toList();</span>
+
+<span class="fc" id="L308">        return new DoctorScheduleResponse(doctorId, days);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

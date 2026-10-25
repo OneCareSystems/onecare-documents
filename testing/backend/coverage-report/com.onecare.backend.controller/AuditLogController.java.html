@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLogController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">AuditLogController.java</span></div><h1>AuditLogController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.response.AuditLogResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.AuditLogService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
+
+/**
+ * Read-only audit trail API (FR041, FR042, UC26). Append-only by construction:
+ * this controller declares a single GET mapping - there is no PUT, PATCH or
+ * DELETE handler for audit logs anywhere in the application.
+ */
+@Tag(name = &quot;Audit Logs&quot;, description = &quot;access to system activity for Super Admin investigation. Records can never be &quot;
+        + &quot;edited or deleted. Super Admin only.&quot;)
+@SecurityRequirement(name = &quot;bearerAuth&quot;)
+@RestController
+@RequestMapping(&quot;/api/audit-logs&quot;)
+public class AuditLogController {
+
+    private final AuditLogService auditLogService;
+
+<span class="fc" id="L37">    public AuditLogController(AuditLogService auditLogService) {</span>
+<span class="fc" id="L38">        this.auditLogService = auditLogService;</span>
+<span class="fc" id="L39">    }</span>
+
+    @Operation(
+            summary = &quot;Search the audit trail&quot;,
+            description = &quot;Newest first, paginated: page defaults to 0, size defaults to 20 and is &quot;
+                    + &quot;capped at 100. Optional filters: userId (actor), exact actionType &quot;
+                    + &quot;(case-insensitive, e.g. LOGIN_FAILED), module (case-insensitive match on &quot;
+                    + &quot;the record's entityType, e.g. AUTH, PATIENT, INVOICE) and an inclusive &quot;
+                    + &quot;date range (dateFrom/dateTo as yyyy-MM-dd on timestamp). No filters returns &quot;
+                    + &quot;the full trail. An empty result is a normal 200 with data: []. &quot;
+                    + &quot;Returns 403 without AUDIT_READ/AUDIT_READ_ALL.&quot;)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;Audit log entries retrieved (possibly empty)&quot;),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;403&quot;, description = &quot;Missing AUDIT_READ permission&quot;)
+    })
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.AUDIT_READ_ALL + &quot;') &quot;
+            + &quot;or hasAuthority('&quot; + Permission.AUDIT_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Page&lt;?&gt;&gt;&gt; searchAuditLogs(
+            @Parameter(description = &quot;Filter by acting user id&quot;)
+            @RequestParam(required = false) Long userId,
+            @Parameter(description = &quot;Exact action type, case-insensitive (e.g. LOGIN_FAILED)&quot;)
+            @RequestParam(required = false) String actionType,
+            @Parameter(description = &quot;Module filter, case-insensitive (e.g. AUTH, PATIENT, INVOICE)&quot;)
+            @RequestParam(required = false) String module,
+            @Parameter(description = &quot;Inclusive lower bound of timestamp (yyyy-MM-dd)&quot;)
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = &quot;Inclusive upper bound of timestamp (yyyy-MM-dd)&quot;)
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(description = &quot;Zero-based page index, default 0&quot;)
+            @RequestParam(required = false, defaultValue = &quot;0&quot;) Integer page,
+            @Parameter(description = &quot;Page size, default 20, max 100&quot;)
+            @RequestParam(required = false, defaultValue = &quot;20&quot;) Integer size) {
+
+<span class="fc" id="L73">        Page&lt;AuditLogResponse&gt; auditLogs =</span>
+<span class="fc" id="L74">                auditLogService.search(userId, actionType, module, dateFrom, dateTo, page, size);</span>
+
+<span class="fc" id="L76">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Audit logs retrieved successfully&quot;, auditLogs));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

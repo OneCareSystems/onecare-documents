@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpenApiConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.config</a> &gt; <span class="el_source">OpenApiConfig.java</span></div><h1>OpenApiConfig.java</h1><pre class="source lang-java linenums">package com.onecare.backend.config;
+
+import com.onecare.backend.security.ApiRateLimitFilter;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
+import java.util.Set;
+
+@Configuration
+<span class="fc" id="L18">public class OpenApiConfig {</span>
+
+    /**
+     * Endpoints reachable without an Authorization header (SecurityConfig
+     * permitAll) — a 401 does not apply to them.
+     */
+<span class="fc" id="L24">    private static final Set&lt;String&gt; PUBLIC_PATHS = Set.of(</span>
+            &quot;/api/auth/forgot-password&quot;,
+            &quot;/api/auth/reset-password&quot;,
+            &quot;/api/public/appointments&quot;,
+            &quot;/api/public/doctors&quot;,
+            &quot;/api/public/doctors/{doctorId}/available-slots&quot;);
+
+    /**
+     * Prefixes guarded by hasAnyRole rules (SecurityConfig requestMatchers or
+     * controller-level @PreAuthorize) — the only operations that can produce
+     * AccessDeniedException (403). Keep in sync when adding a role-restricted route.
+     */
+<span class="fc" id="L36">    private static final List&lt;String&gt; RBAC_PATH_PREFIXES = List.of(</span>
+            &quot;/api/users&quot;,
+            &quot;/api/patients&quot;,
+            &quot;/api/medicines&quot;,
+            &quot;/api/prescriptions&quot;,
+            &quot;/api/appointments&quot;,
+            &quot;/api/invoices&quot;,
+            &quot;/api/queues&quot;,
+            &quot;/api/audit&quot;,
+            &quot;/api/chatbot/knowledge-base&quot;);
+
+    @Bean
+    public OpenAPI oneCareOpenAPI() {
+<span class="fc" id="L49">        return new OpenAPI()</span>
+<span class="fc" id="L50">                .info(new Info()</span>
+<span class="fc" id="L51">                        .title(&quot;OneCare Clinic Management API&quot;)</span>
+<span class="fc" id="L52">                        .version(&quot;1.0.0&quot;)</span>
+<span class="fc" id="L53">                        .description(</span>
+                                &quot;REST API for the OneCare Clinic Integrated Pharmacy Management System.&quot;))
+<span class="fc" id="L55">                .components(</span>
+                        new Components()
+<span class="fc" id="L57">                                .addSecuritySchemes(</span>
+                                        &quot;bearerAuth&quot;,
+                                        new SecurityScheme()
+<span class="fc" id="L60">                                                .type(SecurityScheme.Type.HTTP)</span>
+<span class="fc" id="L61">                                                .scheme(&quot;bearer&quot;)</span>
+<span class="fc" id="L62">                                                .bearerFormat(&quot;JWT&quot;)));</span>
+    }
+
+    /**
+     * Centralizes the repetitive response documentation so controllers only
+     * declare endpoint-specific codes:
+     * - 500 on every operation (GlobalExceptionHandler catch-all)
+     * - 400 on every operation that accepts a request body (@Valid)
+     * - 401 on every operation except permitAll paths
+     * - 403 on role-protected operations (SecurityConfig hasAnyRole)
+     * - 429 on /api/* (ApiRateLimitFilter: auth tier on /api/auth/*,
+     *   public-booking tier on /api/public/*)
+     */
+    @Bean
+    public GlobalOpenApiCustomizer defaultResponsesCustomizer() {
+<span class="fc" id="L77">        return openApi -&gt; {</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if (openApi.getPaths() == null) {</span>
+<span class="nc" id="L79">                return;</span>
+            }
+<span class="fc" id="L81">            openApi.getPaths().forEach((path, pathItem) -&gt;</span>
+<span class="fc" id="L82">                    pathItem.readOperationsMap().forEach((httpMethod, operation) -&gt; {</span>
+<span class="fc" id="L83">                        var responses = operation.getResponses();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                        if (responses == null) {</span>
+<span class="nc" id="L85">                            return;</span>
+                        }
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                        if (operation.getRequestBody() != null) {</span>
+<span class="fc" id="L88">                            responses.putIfAbsent(&quot;400&quot;,</span>
+<span class="fc" id="L89">                                    new ApiResponse().description(&quot;Validation failed or malformed request&quot;));</span>
+                        }
+<span class="fc" id="L91">                        responses.putIfAbsent(&quot;500&quot;,</span>
+<span class="fc" id="L92">                                new ApiResponse().description(&quot;Internal Server Error&quot;));</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                        if (!PUBLIC_PATHS.contains(path)) {</span>
+<span class="fc" id="L94">                            responses.putIfAbsent(&quot;401&quot;,</span>
+<span class="fc" id="L95">                                    new ApiResponse().description(&quot;Missing or invalid access token&quot;));</span>
+                        }
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                        if (RBAC_PATH_PREFIXES.stream().anyMatch(path::startsWith)) {</span>
+<span class="fc" id="L98">                            responses.putIfAbsent(&quot;403&quot;,</span>
+<span class="fc" id="L99">                                    new ApiResponse().description(&quot;Forbidden: insufficient permissions&quot;));</span>
+                        }
+                        // Exempt public routes (e.g. the doctor directory) are never
+                        // throttled, so a 429 would be misleading there.
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                        if (path.startsWith(&quot;/api/&quot;)</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                                &amp;&amp; !ApiRateLimitFilter.RATE_LIMIT_EXEMPT_PATHS.contains(path)) {</span>
+<span class="fc" id="L105">                            responses.putIfAbsent(&quot;429&quot;,</span>
+<span class="fc" id="L106">                                    new ApiResponse().description(&quot;Too many requests&quot;));</span>
+                        }
+<span class="fc" id="L108">                    }));</span>
+<span class="fc" id="L109">        };</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

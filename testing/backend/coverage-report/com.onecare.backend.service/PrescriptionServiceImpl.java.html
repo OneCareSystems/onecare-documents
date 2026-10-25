@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrescriptionServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">PrescriptionServiceImpl.java</span></div><h1>PrescriptionServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.CreatePrescriptionRequest;
+import com.onecare.backend.dto.request.PrescriptionItemRequest;
+import com.onecare.backend.dto.request.UpdatePrescriptionRequest;
+import com.onecare.backend.dto.response.PrescriptionDetailResponse;
+import com.onecare.backend.dto.response.PrescriptionResponse;
+import com.onecare.backend.entity.Appointment;
+import com.onecare.backend.entity.Medicine;
+import com.onecare.backend.entity.Patient;
+import com.onecare.backend.entity.Prescription;
+import com.onecare.backend.entity.PrescriptionItem;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.PrescriptionItemType;
+import com.onecare.backend.enums.PrescriptionStatus;
+import com.onecare.backend.enums.Role;
+import com.onecare.backend.exception.BusinessRuleException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.AppointmentRepository;
+import com.onecare.backend.repository.MedicineRepository;
+import com.onecare.backend.repository.PatientRepository;
+import com.onecare.backend.repository.PrescriptionRepository;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@Service
+@Transactional
+public class PrescriptionServiceImpl implements PrescriptionService {
+
+<span class="fc" id="L41">    private static final Logger log = LoggerFactory.getLogger(PrescriptionServiceImpl.class);</span>
+
+    private final PrescriptionRepository prescriptionRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final MedicineRepository medicineRepository;
+    private final AppointmentRepository appointmentRepository;
+
+    public PrescriptionServiceImpl(PrescriptionRepository prescriptionRepository,
+                                   PatientRepository patientRepository,
+                                   UserRepository userRepository,
+                                   MedicineRepository medicineRepository,
+<span class="fc" id="L53">                                   AppointmentRepository appointmentRepository) {</span>
+<span class="fc" id="L54">        this.prescriptionRepository = prescriptionRepository;</span>
+<span class="fc" id="L55">        this.patientRepository = patientRepository;</span>
+<span class="fc" id="L56">        this.userRepository = userRepository;</span>
+<span class="fc" id="L57">        this.medicineRepository = medicineRepository;</span>
+<span class="fc" id="L58">        this.appointmentRepository = appointmentRepository;</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    @Audited(action = &quot;PRESCRIPTION_CREATE&quot;, module = &quot;PRESCRIPTION&quot;)
+    public PrescriptionResponse createPrescription(CreatePrescriptionRequest request) {
+
+        // 1. Doctor: always the authenticated user, persisted role must be DOCTOR
+<span class="fc" id="L66">        User doctor = resolveAuthenticatedDoctor();</span>
+
+        // 2. Patient must exist and be active
+<span class="fc" id="L69">        Patient patient = patientRepository.findById(request.patientId())</span>
+<span class="fc" id="L70">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="fc" id="L71">                        &quot;Patient not found with id: &quot; + request.patientId()));</span>
+
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(patient.getIsActive())) {</span>
+<span class="fc" id="L74">            throw new BusinessRuleException(</span>
+<span class="fc" id="L75">                    &quot;Patient is not active with id: &quot; + request.patientId());</span>
+        }
+
+        // 3. Appointment is required, must exist, and must belong to THIS patient
+        //    and THIS authenticated doctor — a valid patient id must never be
+        //    combinable with an unrelated appointment id
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (request.appointmentId() == null) {</span>
+<span class="fc" id="L82">            throw new BusinessRuleException(&quot;appointmentId is required&quot;);</span>
+        }
+
+<span class="fc" id="L85">        Appointment appointment = appointmentRepository.findById(request.appointmentId())</span>
+<span class="fc" id="L86">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="fc" id="L87">                        &quot;Appointment not found with id: &quot; + request.appointmentId()));</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (!appointment.getPatient().getPatientId().equals(request.patientId())) {</span>
+<span class="fc" id="L90">            throw new BusinessRuleException(</span>
+<span class="fc" id="L91">                    &quot;Appointment with id: &quot; + appointment.getAppointmentId()</span>
+<span class="fc" id="L92">                            + &quot; does not belong to patient id: &quot; + request.patientId());</span>
+        }
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (!appointment.getDoctor().getUserId().equals(doctor.getUserId())) {</span>
+<span class="fc" id="L96">            throw new BusinessRuleException(</span>
+<span class="fc" id="L97">                    &quot;Appointment with id: &quot; + appointment.getAppointmentId()</span>
+                            + &quot; does not belong to the authenticated doctor&quot;);
+        }
+
+<span class="fc" id="L101">        Optional&lt;Prescription&gt; existing =</span>
+<span class="fc" id="L102">                prescriptionRepository.findByAppointmentAppointmentId(request.appointmentId());</span>
+
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (existing.isPresent()</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                &amp;&amp; existing.get().getStatus() != PrescriptionStatus.CANCELLED) {</span>
+
+<span class="nc" id="L107">            throw new BusinessRuleException(</span>
+                    &quot;An active prescription already exists for appointment id: &quot;
+<span class="nc" id="L109">                            + request.appointmentId());</span>
+        }
+
+        // 4. Validate EVERY in-house medicine BEFORE any prescription data is written
+        //    (EXTERNAL_PURCHASE items reference no catalog medicine, so nothing to validate)
+<span class="fc" id="L114">        Map&lt;Long, Medicine&gt; medicines = loadAndValidateMedicines(request.items());</span>
+
+        // 5. Build prescription + items; status is set server-side only
+<span class="fc" id="L117">        Prescription prescription = new Prescription();</span>
+<span class="fc" id="L118">        prescription.setDoctor(doctor);</span>
+<span class="fc" id="L119">        prescription.setPatient(patient);</span>
+<span class="fc" id="L120">        prescription.setAppointment(appointment);</span>
+<span class="fc" id="L121">        prescription.setDate(LocalDate.now());</span>
+<span class="fc" id="L122">        prescription.setStatus(PrescriptionStatus.ISSUED);</span>
+        // prescription.setClinicalNotes(request.clinicalNotes());
+
+<span class="fc" id="L125">        populateItems(prescription, request.items(), medicines);</span>
+
+        // Single save cascades prescription + all items inside this transaction;
+        // any later failure rolls the whole thing back (zero rows on both tables)
+<span class="fc" id="L129">        Prescription saved = prescriptionRepository.save(prescription);</span>
+
+<span class="fc" id="L131">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L132">        log.info(&quot;Prescription created | prescriptionId={} | patientId={} | doctorId={} | items={} | performedBy={}&quot;,</span>
+<span class="fc" id="L133">                saved.getPrescriptionId(), patient.getPatientId(),</span>
+<span class="fc" id="L134">                doctor.getUserId(), saved.getItems().size(), performedBy);</span>
+
+<span class="fc" id="L136">        return PrescriptionResponse.from(saved);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;PrescriptionResponse&gt; findAllPrescriptions(String status) {
+
+<span class="fc" id="L143">        PrescriptionStatus filter = parseStatus(status);</span>
+
+        // AC1: a doctor's prescriptions are scoped IN THE REPOSITORY QUERY
+        // (doctor_id = self), never by filtering a full fetch in memory.
+        List&lt;Prescription&gt; prescriptions;
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (SecurityUtil.isDoctor()) {</span>
+<span class="fc" id="L149">            Long doctorId = SecurityUtil.getCurrentUserId()</span>
+<span class="pc" id="L150">                    .orElseThrow(() -&gt; new org.springframework.security.access.AccessDeniedException(</span>
+                            &quot;Authentication required&quot;));
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            prescriptions = filter == null</span>
+<span class="fc" id="L153">                    ? prescriptionRepository.findByDoctor_UserId(doctorId)</span>
+<span class="fc" id="L154">                    : prescriptionRepository.findByDoctor_UserIdAndStatus(doctorId, filter);</span>
+<span class="fc" id="L155">        } else {</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            prescriptions = filter == null</span>
+<span class="fc" id="L157">                    ? prescriptionRepository.findAll()</span>
+<span class="fc" id="L158">                    : prescriptionRepository.findByStatus(filter);</span>
+        }
+
+        // PrescriptionResponse has no clinicalNotes field — nothing to strip here
+<span class="fc" id="L162">        return prescriptions.stream()</span>
+<span class="fc" id="L163">                .filter(this::canView)</span>
+<span class="fc" id="L164">                .map(PrescriptionResponse::from)</span>
+<span class="fc" id="L165">                .toList();</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;PrescriptionResponse&gt; findTodaysPrescriptions() {
+
+<span class="nc" id="L172">        LocalDate today = LocalDate.now();</span>
+
+        // AC1: doctor_id = self is part of the query, not an in-memory filter
+        java.util.stream.Stream&lt;Prescription&gt; stream;
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (SecurityUtil.isDoctor()) {</span>
+<span class="nc" id="L177">            Long doctorId = SecurityUtil.getCurrentUserId()</span>
+<span class="nc" id="L178">                    .orElseThrow(() -&gt; new org.springframework.security.access.AccessDeniedException(</span>
+                            &quot;Authentication required&quot;));
+<span class="nc" id="L180">            stream = prescriptionRepository</span>
+<span class="nc" id="L181">                    .findByDoctor_UserIdAndDateAndStatusNot(doctorId, today, PrescriptionStatus.CANCELLED)</span>
+<span class="nc" id="L182">                    .stream();</span>
+<span class="nc" id="L183">        } else {</span>
+<span class="nc" id="L184">            stream = prescriptionRepository</span>
+<span class="nc" id="L185">                    .findByDateAndStatusNot(today, PrescriptionStatus.CANCELLED)</span>
+<span class="nc" id="L186">                    .stream();</span>
+        }
+
+<span class="nc" id="L189">        return stream</span>
+<span class="nc" id="L190">                .filter(this::canView)</span>
+<span class="nc" id="L191">                .map(PrescriptionResponse::from)</span>
+<span class="nc" id="L192">                .toList();</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PrescriptionDetailResponse findPrescriptionById(Long id) {
+
+<span class="fc" id="L199">        Prescription prescription = findPrescriptionByIdInternal(id);</span>
+<span class="fc" id="L200">        checkViewAccess(prescription);</span>
+
+        // boolean includeClinicalNotes =
+        //         SecurityUtil.hasPermission(Permission.PRESCRIPTION_READ_CLINICAL_NOTES);
+
+<span class="fc" id="L205">        return PrescriptionDetailResponse.from(prescription);</span>
+    }
+
+    @Override
+    @Audited(action = &quot;PRESCRIPTION_UPDATE&quot;, module = &quot;PRESCRIPTION&quot;)
+    public PrescriptionResponse updatePrescription(Long id, UpdatePrescriptionRequest request) {
+
+        // 1. Doctor: always the authenticated user, persisted role must be DOCTOR
+<span class="fc" id="L213">        User doctor = resolveAuthenticatedDoctor();</span>
+
+        // 2. Prescription must exist
+<span class="fc" id="L216">        Prescription prescription = findPrescriptionByIdInternal(id);</span>
+
+        // 3. Only an ISSUED prescription may be edited
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (prescription.getStatus() != PrescriptionStatus.ISSUED) {</span>
+<span class="fc" id="L220">            throw new BusinessRuleException(</span>
+                    &quot;Only ISSUED prescriptions can be updated, prescription id: &quot; + id
+<span class="fc" id="L222">                            + &quot; has status: &quot; + prescription.getStatus());</span>
+        }
+
+        // 4. Only the doctor who issued it may edit it
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (!doctor.getUserId().equals(prescription.getDoctor().getUserId())) {</span>
+<span class="fc" id="L227">            throw new BusinessRuleException(</span>
+                    &quot;Prescription with id: &quot; + id + &quot; was issued by another doctor&quot;);
+        }
+
+        // 5. Validate EVERY new in-house medicine BEFORE anything is mutated,
+        //    so a rejected request leaves the prescription exactly as it was
+<span class="fc" id="L233">        Map&lt;Long, Medicine&gt; medicines = loadAndValidateMedicines(request.items());</span>
+
+        // 6. Replace content: notes only when provided; items are swapped as a whole
+        //    (orphanRemoval deletes the old lines on save)
+        // if (request.clinicalNotes() != null) {
+        //     prescription.setClinicalNotes(request.clinicalNotes());
+        // }
+
+<span class="fc" id="L241">        prescription.getItems().clear();</span>
+<span class="fc" id="L242">        populateItems(prescription, request.items(), medicines);</span>
+
+<span class="fc" id="L244">        Prescription saved = prescriptionRepository.save(prescription);</span>
+
+<span class="fc" id="L246">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L247">        log.info(&quot;Prescription updated | prescriptionId={} | doctorId={} | items={} | performedBy={}&quot;,</span>
+<span class="fc" id="L248">                saved.getPrescriptionId(), doctor.getUserId(),</span>
+<span class="fc" id="L249">                saved.getItems().size(), performedBy);</span>
+
+<span class="fc" id="L251">        return PrescriptionResponse.from(saved);</span>
+    }
+
+    @Override
+    @Audited(action = &quot;PRESCRIPTION_CANCEL&quot;, module = &quot;PRESCRIPTION&quot;)
+    public void cancelPrescription(Long id) {
+
+<span class="fc" id="L258">        Prescription prescription = findPrescriptionByIdInternal(id);</span>
+
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (prescription.getStatus() == PrescriptionStatus.DISPENSED</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                || prescription.getStatus() == PrescriptionStatus.DISPENSED_EXTERNAL</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                || prescription.getStatus() == PrescriptionStatus.PARTIALLY_DISPENSED) {</span>
+<span class="fc" id="L263">            throw new BusinessRuleException(</span>
+                    &quot;Dispensed prescription cannot be cancelled with id: &quot; + id);
+        }
+
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (prescription.getStatus() == PrescriptionStatus.CANCELLED) {</span>
+<span class="fc" id="L268">            throw new BusinessRuleException(</span>
+                    &quot;Prescription is already cancelled with id: &quot; + id);
+        }
+
+        // ISSUED -&gt; CANCELLED (only reachable transition for this endpoint)
+<span class="fc" id="L273">        prescription.setStatus(PrescriptionStatus.CANCELLED);</span>
+<span class="fc" id="L274">        prescriptionRepository.save(prescription);</span>
+
+<span class="fc" id="L276">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L277">        log.info(&quot;Prescription cancelled | prescriptionId={} | performedBy={}&quot;, id, performedBy);</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * The prescribing doctor is ALWAYS the authenticated user — there is no
+     * doctorId in the request. The persisted account is re-read so the role
+     * check uses the database value, not a claim from the token.
+     */
+    private User resolveAuthenticatedDoctor() {
+
+<span class="fc" id="L287">        Long userId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        Optional&lt;User&gt; user = userId != null</span>
+<span class="nc" id="L290">                ? userRepository.findById(userId)</span>
+<span class="fc" id="L291">                : SecurityUtil.getCurrentUsername().flatMap(userRepository::findByUsername);</span>
+
+<span class="pc" id="L293">        User doctor = user.orElseThrow(() -&gt; new BusinessRuleException(</span>
+                &quot;Authenticated user could not be resolved to a system user&quot;));
+
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        if (doctor.getRole() != Role.DOCTOR) {</span>
+<span class="fc" id="L297">            throw new BusinessRuleException(</span>
+                    &quot;Only users with DOCTOR role can manage prescriptions&quot;);
+        }
+
+<span class="fc" id="L301">        return doctor;</span>
+    }
+
+    /**
+     * Loads every referenced IN_HOUSE medicine and applies the DDP-21 rules:
+     * must exist, must not be quarantined, must not be expired.
+     * EXTERNAL_PURCHASE items are skipped — they are not in the catalog.
+     * Called BEFORE anything is saved, so an invalid item anywhere in the
+     * request rejects the entire prescription with zero rows written.
+     */
+    private Map&lt;Long, Medicine&gt; loadAndValidateMedicines(List&lt;PrescriptionItemRequest&gt; items) {
+
+<span class="fc" id="L313">        List&lt;Long&gt; medicineIds = items.stream()</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                .filter(item -&gt; item.itemType() == PrescriptionItemType.IN_HOUSE)</span>
+<span class="fc" id="L315">                .map(PrescriptionItemRequest::medicineId)</span>
+<span class="fc" id="L316">                .distinct()</span>
+<span class="fc" id="L317">                .toList();</span>
+
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (medicineIds.isEmpty()) {</span>
+<span class="fc" id="L320">            return Map.of(); // no in-house items — nothing to look up or validate</span>
+        }
+
+<span class="fc" id="L323">        Map&lt;Long, Medicine&gt; medicines = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L324">        medicineRepository.findAllById(medicineIds)</span>
+<span class="fc" id="L325">                .forEach(medicine -&gt; medicines.put(medicine.getMedicineId(), medicine));</span>
+
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        for (Long medicineId : medicineIds) {</span>
+<span class="fc" id="L328">            Medicine medicine = medicines.get(medicineId);</span>
+
+<span class="fc bfc" id="L330" title="All 2 branches covered.">            if (medicine == null) {</span>
+<span class="fc" id="L331">                throw new BusinessRuleException(</span>
+                        &quot;Medicine not found with id: &quot; + medicineId);
+            }
+<span class="fc" id="L334">            String reason = DispensingRules.unavailableReason(medicine);</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            if (reason != null) throw new BusinessRuleException(reason);</span>
+<span class="fc" id="L336">        }</span>
+
+<span class="fc" id="L338">        return medicines;</span>
+    }
+
+    /**
+     * Builds one PrescriptionItem per request line. IN_HOUSE items point at the
+     * already-validated catalog medicine; EXTERNAL_PURCHASE items carry free text
+     * only and are never stock-checked, dispensed or invoiced.
+     */
+    private void populateItems(Prescription prescription,
+                               List&lt;PrescriptionItemRequest&gt; items,
+                               Map&lt;Long, Medicine&gt; medicines) {
+
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        for (PrescriptionItemRequest itemRequest : items) {</span>
+<span class="fc" id="L351">            PrescriptionItem item = new PrescriptionItem();</span>
+<span class="fc" id="L352">            item.setPrescription(prescription);</span>
+<span class="fc" id="L353">            item.setItemType(itemRequest.itemType());</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">            if (itemRequest.itemType() == PrescriptionItemType.IN_HOUSE) {</span>
+<span class="fc" id="L355">                item.setMedicine(medicines.get(itemRequest.medicineId()));</span>
+            } else {
+                // EXTERNAL_PURCHASE: free text only, no catalog reference
+<span class="fc" id="L358">                item.setMedicineName(itemRequest.medicineName());</span>
+            }
+<span class="fc" id="L360">            item.setDosage(itemRequest.dosage());</span>
+<span class="fc" id="L361">            item.setFrequency(itemRequest.frequency());</span>
+<span class="fc" id="L362">            item.setDurationDays(itemRequest.durationDays());</span>
+<span class="fc" id="L363">            item.setQuantity(itemRequest.quantity());</span>
+<span class="fc" id="L364">            prescription.getItems().add(item);</span>
+<span class="fc" id="L365">        }</span>
+<span class="fc" id="L366">    }</span>
+
+    private boolean canView(Prescription prescription) {
+<span class="fc" id="L369">        return canViewPrescription(prescription);</span>
+    }
+
+    private static boolean canViewPrescription(Prescription prescription) {
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        if (!SecurityUtil.isDoctor()) return true;</span>
+<span class="fc" id="L374">        return SecurityUtil.getCurrentUserId().map(id -&gt; id.equals(prescription.getDoctor().getUserId()))</span>
+<span class="fc" id="L375">                .orElseGet(() -&gt; SecurityUtil.getCurrentUsername()</span>
+<span class="fc" id="L376">                        .map(name -&gt; name.equals(prescription.getDoctor().getUsername())).orElse(false));</span>
+    }
+
+    static void checkViewAccess(Prescription prescription) {
+<span class="fc bfc" id="L380" title="All 2 branches covered.">        if (!canViewPrescription(prescription)) {</span>
+<span class="fc" id="L381">            throw new org.springframework.security.access.AccessDeniedException(&quot;Prescription belongs to another doctor&quot;);</span>
+        }
+<span class="fc" id="L383">    }</span>
+
+    private PrescriptionStatus parseStatus(String status) {
+<span class="pc bpc" id="L386" title="1 of 4 branches missed.">        if (status == null || status.isBlank()) {</span>
+<span class="fc" id="L387">            return null;</span>
+        }
+        try {
+<span class="fc" id="L390">            return PrescriptionStatus.valueOf(status.trim().toUpperCase());</span>
+<span class="fc" id="L391">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L392">            throw new BusinessRuleException(</span>
+                    &quot;Invalid status filter: '&quot; + status
+                            + &quot;'. Allowed values: ISSUED, PARTIALLY_DISPENSED, DISPENSED, DISPENSED_EXTERNAL, CANCELLED&quot;);
+        }
+    }
+
+    private Prescription findPrescriptionByIdInternal(Long id) {
+<span class="fc" id="L399">        return prescriptionRepository.findById(id)</span>
+<span class="fc" id="L400">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Prescription not found with id: &quot; + id));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

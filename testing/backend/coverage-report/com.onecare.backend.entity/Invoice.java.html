@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Invoice.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.entity</a> &gt; <span class="el_source">Invoice.java</span></div><h1>Invoice.java</h1><pre class="source lang-java linenums">package com.onecare.backend.entity;
+
+import com.onecare.backend.enums.InvoiceStatus;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Financial record of a billed consultation and its dispensed items, or of a
+ * single external dispensing event (DDP-23).
+ *
+ * Exactly one source per invoice: appointment (consultation + prescription
+ * lines) XOR dispense (external/OTC medicines only). The patient is optional
+ * because a walk-in OTC sale has none.
+ *
+ * Immutable in spirit: lines are snapshotted at generation time (unit price is
+ * stored on the item, never re-read on view), status is
+ * derived from the payments, and the outstanding balance is always
+ * total - amount_paid. Optimistic locking ({@code @Version}) protects concurrent
+ * cash payments so an invoice can never be overpaid.
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(
+        name = &quot;invoices&quot;,
+        uniqueConstraints = {
+                @UniqueConstraint(name = &quot;uq_invoices_number&quot;, columnNames = &quot;invoice_number&quot;),
+                @UniqueConstraint(name = &quot;uq_invoices_appointment&quot;, columnNames = &quot;appointment_id&quot;),
+                @UniqueConstraint(name = &quot;uq_invoices_dispense&quot;, columnNames = &quot;dispense_id&quot;)
+        })
+public class Invoice {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = &quot;invoice_id&quot;)
+    private Long invoiceId;
+
+    /** Unique, system-generated (e.g. INV-2026-000123). Never client-supplied. */
+    @Column(name = &quot;invoice_number&quot;, nullable = false, length = 50)
+    private String invoiceNumber;
+
+    /** Null only for unknown walk-ins (OTC external sales). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;patient_id&quot;)
+    private Patient patient;
+
+    /** Set XOR dispense: billed consultation (FR035). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;appointment_id&quot;)
+    private Appointment appointment;
+
+    /** Set XOR appointment: billed external dispensing event (one per event). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;dispense_id&quot;)
+    private ExternalDispensing dispense;
+
+    /** Derived - never set by a client. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;status&quot;, nullable = false, length = 20)
+    private InvoiceStatus status;
+
+    /** Sum of the line totals, 2-decimal HALF_UP precision. */
+    @Column(name = &quot;total&quot;, nullable = false, precision = 12, scale = 2)
+    private BigDecimal total;
+
+    /** Sum of the recorded payments. Outstanding balance = total - amountPaid. */
+    @Column(name = &quot;amount_paid&quot;, nullable = false, precision = 12, scale = 2)
+    private BigDecimal amountPaid;
+
+    /** The Admin/Super Admin that generated the invoice. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;created_by&quot;, nullable = false)
+    private User createdBy;
+
+    @CreationTimestamp
+    @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    /** Optimistic lock (api-standards 942): conflicting concurrent payments -&gt; 409. */
+    @Version
+    @Column(name = &quot;version&quot;, nullable = false)
+    private Long version;
+
+    @OneToMany(mappedBy = &quot;invoice&quot;, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List&lt;InvoiceItem&gt; items = new ArrayList&lt;&gt;();
+
+    @OneToMany(mappedBy = &quot;invoice&quot;, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List&lt;Payment&gt; payments = new ArrayList&lt;&gt;();
+
+    /** Derived balance the client is expected to settle. */
+    @Transient
+    public BigDecimal getOutstandingBalance() {
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">        return total == null || amountPaid == null</span>
+<span class="nc" id="L103">                ? total</span>
+<span class="fc" id="L104">                : total.subtract(amountPaid);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

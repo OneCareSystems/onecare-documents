@@ -1,0 +1,781 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AppointmentServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">AppointmentServiceImpl.java</span></div><h1>AppointmentServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.CreateAppointmentRequest;
+import com.onecare.backend.dto.request.UpdateAppointmentRequest;
+import com.onecare.backend.dto.response.AppointmentClinicalNotesResponse;
+import com.onecare.backend.dto.response.AppointmentResponse;
+import com.onecare.backend.entity.Appointment;
+import com.onecare.backend.entity.DoctorSchedule;
+import com.onecare.backend.entity.Patient;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.AppointmentStatus;
+import com.onecare.backend.enums.Role;
+import com.onecare.backend.exception.BusinessRuleException;
+import com.onecare.backend.exception.InvalidAppointmentStatusException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.exception.SlotConflictException;
+import com.onecare.backend.repository.AppointmentRepository;
+import com.onecare.backend.repository.DoctorScheduleRepository;
+import com.onecare.backend.repository.PatientRepository;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.security.SecurityUtil;
+import com.onecare.backend.util.PhoneNumberUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+@Transactional
+public class AppointmentServiceImpl implements AppointmentService {
+
+<span class="fc" id="L47">    private static final Logger log = LoggerFactory.getLogger(AppointmentServiceImpl.class);</span>
+
+    private final AppointmentRepository appointmentRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final DoctorScheduleRepository doctorScheduleRepository;
+    private final LocalTime operatingStartTime;
+    private final LocalTime operatingEndTime;
+    private final Duration slotDuration;
+
+    @Autowired 
+    public AppointmentServiceImpl(
+            AppointmentRepository appointmentRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            DoctorScheduleRepository doctorScheduleRepository,
+            @Value(&quot;${clinic.operating-hours.start-time:16:00}&quot;) String startTimeStr,
+            @Value(&quot;${clinic.operating-hours.end-time:21:00}&quot;) String endTimeStr,
+<span class="fc" id="L65">            @Value(&quot;${clinic.operating-hours.slot-duration-minutes:30}&quot;) int slotDurationMinutes) {</span>
+<span class="fc" id="L66">        this.appointmentRepository = appointmentRepository;</span>
+<span class="fc" id="L67">        this.patientRepository = patientRepository;</span>
+<span class="fc" id="L68">        this.userRepository = userRepository;</span>
+<span class="fc" id="L69">        this.doctorScheduleRepository = doctorScheduleRepository;</span>
+<span class="fc" id="L70">        this.operatingStartTime = LocalTime.parse(startTimeStr);</span>
+<span class="fc" id="L71">        this.operatingEndTime = LocalTime.parse(endTimeStr);</span>
+<span class="fc" id="L72">        this.slotDuration = Duration.ofMinutes(slotDurationMinutes);</span>
+<span class="fc" id="L73">    }</span>
+
+    // Overload for tests that instantiate directly with 3 repository parameters
+    public AppointmentServiceImpl(
+            AppointmentRepository appointmentRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository) {
+<span class="fc" id="L80">        this(appointmentRepository, patientRepository, userRepository, null, &quot;16:00&quot;, &quot;21:00&quot;, 30);</span>
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    @Audited(action = &quot;APPOINTMENT_CREATE&quot;, module = &quot;APPOINTMENT&quot;)
+    public AppointmentResponse createAppointment(CreateAppointmentRequest request) {
+<span class="fc" id="L86">        validateCreateRequest(request);</span>
+
+<span class="fc" id="L88">        Patient patient = resolveTrustedPatient(request.patientId());</span>
+<span class="fc" id="L89">        User doctor = userRepository.findById(request.doctorId())</span>
+<span class="pc" id="L90">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + request.doctorId()));</span>
+
+<span class="fc" id="L92">        Appointment saved = createAppointmentInternal(patient, doctor, request.appointmentDateTime(), request.reason());</span>
+<span class="fc" id="L93">        log.info(&quot;Created appointment {} for patient {} with doctor {} at {}&quot;,</span>
+<span class="fc" id="L94">                saved.getAppointmentId(), patient.getPatientId(), doctor.getUserId(), request.appointmentDateTime());</span>
+<span class="fc" id="L95">        return mapAppointment(saved, getCurrentAuthenticatedUser());</span>
+    }
+
+    @Override
+    public AppointmentResponse createAppointmentForPatient(Long patientId, Long doctorId,
+            LocalDateTime appointmentDateTime, String reason) {
+<span class="fc" id="L101">        Patient patient = patientRepository.findById(patientId)</span>
+<span class="fc" id="L102">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Patient not found with id: &quot; + patientId));</span>
+<span class="fc" id="L103">        User doctor = userRepository.findById(doctorId)</span>
+<span class="fc" id="L104">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + doctorId));</span>
+<span class="fc bfc" id="L105" title="All 4 branches covered.">        if (doctor.getRole() != Role.DOCTOR || !Boolean.TRUE.equals(doctor.getIsActive())) {</span>
+<span class="fc" id="L106">            throw new BusinessRuleException(</span>
+                    &quot;Specified user with id: &quot; + doctorId + &quot; is not an active doctor&quot;);
+        }
+
+<span class="fc" id="L110">        Appointment saved = createAppointmentInternal(patient, doctor, appointmentDateTime, reason);</span>
+<span class="fc" id="L111">        log.info(&quot;Created appointment {} for patient {} with doctor {} at {} (public booking)&quot;,</span>
+<span class="fc" id="L112">                saved.getAppointmentId(), patient.getPatientId(), doctor.getUserId(), appointmentDateTime);</span>
+        // No authenticated caller on this path: unauthenticated-safe mapping, never clinical notes.
+<span class="fc" id="L114">        return AppointmentResponse.from(saved);</span>
+    }
+
+    /**
+     * Shared slot-protected creation behind staff booking (DDP-20) and public
+     * self-booking (DDP-33): clinic-grid assertion -&gt; doctor row lock -&gt;
+     * availability assertion -&gt; SCHEDULED entity -&gt; save guarded by the unique
+     * doctor/date/slot constraint.
+     */
+    private Appointment createAppointmentInternal(Patient patient, User doctor,
+            LocalDateTime requestedStart, String reason) {
+<span class="fc" id="L125">        assertWithinOperatingHours(doctor.getUserId(), requestedStart);</span>
+
+<span class="fc" id="L127">        lockDoctor(doctor.getUserId());</span>
+
+<span class="fc" id="L129">        LocalDateTime requestedEnd = requestedStart.plus(slotDuration);</span>
+<span class="fc" id="L130">        assertDoctorSlotAvailability(doctor.getUserId(), requestedStart, requestedEnd, null);</span>
+<span class="fc" id="L131">        assertWithinWorkingHours(doctor.getUserId(), requestedStart, requestedEnd, null);</span>
+
+<span class="fc" id="L133">        Appointment appointment = new Appointment();</span>
+<span class="fc" id="L134">        appointment.setPatient(patient);</span>
+<span class="fc" id="L135">        appointment.setDoctor(doctor);</span>
+<span class="fc" id="L136">        appointment.setAppointmentDate(requestedStart.toLocalDate());</span>
+<span class="fc" id="L137">        appointment.setTimeSlot(requestedStart.toLocalTime());</span>
+<span class="fc" id="L138">        appointment.setReason(reason);</span>
+<span class="fc" id="L139">        appointment.setStatus(AppointmentStatus.SCHEDULED);</span>
+
+<span class="fc" id="L141">        return saveWithSlotProtection(appointment, doctor.getUserId(), requestedStart, null);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;AppointmentResponse&gt; listAppointments(LocalDate date, LocalDate from, LocalDate to, String search) {
+<span class="fc" id="L147">        validateDateFilters(date, from, to);</span>
+<span class="fc" id="L148">        User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        String query = search != null ? search.trim() : null;</span>
+
+<span class="fc" id="L151">        return findVisibleAppointments(currentUser).stream()</span>
+<span class="fc" id="L152">                .filter(appointment -&gt; matchesDateFilter(appointment.getAppointmentDate(), date, from, to))</span>
+<span class="fc" id="L153">                .filter(appointment -&gt; matchesPatientSearch(appointment.getPatient(), query))</span>
+<span class="fc" id="L154">                .map(appointment -&gt; mapAppointment(appointment, currentUser))</span>
+<span class="fc" id="L155">                .toList();</span>
+    }
+
+    /**
+     * Patient filter, same semantics as the patient search endpoint: partial
+     * case-insensitive name match or exact contact-number match in any stored
+     * format (canonical, legacy spaced or as typed). A blank query matches
+     * everything; an appointment without a linked patient matches nothing.
+     */
+    private static boolean matchesPatientSearch(Patient patient, String query) {
+<span class="fc bfc" id="L165" title="All 4 branches covered.">        if (query == null || query.isEmpty()) {</span>
+<span class="fc" id="L166">            return true;</span>
+        }
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (patient == null) {</span>
+<span class="nc" id="L169">            return false;</span>
+        }
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (patient.getFullName() != null</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                &amp;&amp; patient.getFullName().toLowerCase().contains(query.toLowerCase())) {</span>
+<span class="fc" id="L173">            return true;</span>
+        }
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        return patient.getContactNo() != null</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                &amp;&amp; PhoneNumberUtil.lookupVariants(query).contains(patient.getContactNo());</span>
+    }
+
+    /**
+     * 'date' selects one day; 'from'/'to' select an inclusive range (either may be
+     * omitted to leave that side open); no params match every date.
+     */
+    private static boolean matchesDateFilter(LocalDate appointmentDate, LocalDate date, LocalDate from, LocalDate to) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (date != null) {</span>
+<span class="fc" id="L185">            return date.equals(appointmentDate);</span>
+        }
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (appointmentDate == null) {</span>
+<span class="nc" id="L188">            return false;</span>
+        }
+<span class="fc bfc" id="L190" title="All 4 branches covered.">        if (from != null &amp;&amp; appointmentDate.isBefore(from)) {</span>
+<span class="fc" id="L191">            return false;</span>
+        }
+<span class="fc bfc" id="L193" title="All 4 branches covered.">        return to == null || !appointmentDate.isAfter(to);</span>
+    }
+
+    private static void validateDateFilters(LocalDate date, LocalDate from, LocalDate to) {
+<span class="pc bpc" id="L197" title="1 of 6 branches missed.">        if (date != null &amp;&amp; (from != null || to != null)) {</span>
+<span class="fc" id="L198">            throw new BusinessRuleException(&quot;Filter by either 'date' or 'from'/'to', not both&quot;);</span>
+        }
+<span class="fc bfc" id="L200" title="All 6 branches covered.">        if (from != null &amp;&amp; to != null &amp;&amp; from.isAfter(to)) {</span>
+<span class="fc" id="L201">            throw new BusinessRuleException(&quot;'from' must not be after 'to'&quot;);</span>
+        }
+<span class="fc" id="L203">    }</span>
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;AppointmentResponse&gt; findTodaysAppointments() {
+<span class="fc" id="L208">        LocalDate today = LocalDate.now();</span>
+<span class="fc" id="L209">        User currentUser = getCurrentAuthenticatedUser();</span>
+
+<span class="fc" id="L211">        return findVisibleAppointments(currentUser).stream()</span>
+<span class="fc" id="L212">                .filter(appointment -&gt; today.equals(appointment.getAppointmentDate()))</span>
+<span class="fc" id="L213">                .map(appointment -&gt; mapAppointment(appointment, currentUser))</span>
+<span class="fc" id="L214">                .toList();</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AppointmentResponse getAppointmentById(Long appointmentId) {
+
+<span class="fc" id="L221">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="fc" id="L222">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Appointment not found with id: &quot; + appointmentId));</span>
+
+<span class="fc" id="L224">        assertAppointmentAccess(appointment);</span>
+
+        // clinical notes deliberately excluded — they are only available through
+        // GET /api/appointments/{id}/clinical-notes or the patient history endpoint
+<span class="fc" id="L228">        return AppointmentResponse.from(appointment);</span>
+    }
+
+    /**
+     * Appointments the current user is allowed to see:
+     * - SUPER_ADMIN / ADMIN: all
+     * - DOCTOR: only appointments assigned to them — the doctor_id = self
+     *   filter is part of the repository query (AC1), not applied after fetch
+     * - everyone else: only their own (email-matched) patient profile
+     */
+    private List&lt;Appointment&gt; findVisibleAppointments(User currentUser) {
+<span class="fc" id="L239">    Role currentRole = currentUser.getRole();</span>
+
+<span class="pc bpc" id="L241" title="1 of 4 branches missed.">    if (currentRole == Role.SUPER_ADMIN || currentRole == Role.ADMIN) {</span>
+<span class="fc" id="L242">        return appointmentRepository.findAll();</span>
+    }
+
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">    if (currentRole == Role.DOCTOR) {</span>
+<span class="fc" id="L246">        return appointmentRepository.findByDoctor_UserId(currentUser.getUserId());</span>
+    }
+
+<span class="nc" id="L249">    Patient selfPatient = resolveSelfPatient(currentUser);</span>
+
+<span class="nc" id="L251">    return appointmentRepository.findAll().stream()</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">            .filter(appointment -&gt; appointment.getPatient() != null</span>
+<span class="nc" id="L253">                    &amp;&amp; appointment.getPatient().getPatientId()</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                            .equals(selfPatient.getPatientId()))</span>
+<span class="nc" id="L255">            .toList();</span>
+}
+
+    @Override
+    @Audited(action = &quot;APPOINTMENT_UPDATE&quot;, module = &quot;APPOINTMENT&quot;)
+    public AppointmentResponse updateAppointment(Long appointmentId, UpdateAppointmentRequest request) {
+<span class="fc" id="L261">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="pc" id="L262">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Appointment not found with id: &quot; + appointmentId));
+
+<span class="fc" id="L265">        assertAppointmentAccess(appointment);</span>
+
+        // Cancelled appointments must not receive clinical notes.
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (request.clinicalNotes() != null</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                &amp;&amp; appointment.getStatus() == AppointmentStatus.CANCELLED) {</span>
+<span class="fc" id="L270">            throw new IllegalStateException(</span>
+                    &quot;Clinical notes cannot be added to a cancelled appointment&quot;);
+        }
+
+        // Clinical notes can only be written by doctors.
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (request.clinicalNotes() != null) {</span>
+<span class="fc" id="L276">            assertCanWriteClinicalNotes();</span>
+        }
+
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        Long doctorId = request.doctorId() != null ? request.doctorId()</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                : (appointment.getDoctor() != null ? appointment.getDoctor().getUserId() : null);</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        LocalDateTime newDateTime = request.appointmentDateTime() != null ? request.appointmentDateTime()</span>
+<span class="fc" id="L282">                : LocalDateTime.of(appointment.getAppointmentDate(), appointment.getTimeSlot());</span>
+
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">        if (doctorId == null) {</span>
+<span class="nc" id="L285">            throw new ResourceNotFoundException(&quot;Appointment is missing an assigned doctor&quot;);</span>
+        }
+
+<span class="fc" id="L288">        lockDoctor(doctorId);</span>
+
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (request.doctorId() != null) {</span>
+<span class="fc" id="L291">            User doctor = userRepository.findById(request.doctorId())</span>
+<span class="pc" id="L292">                    .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + request.doctorId()));</span>
+<span class="fc" id="L293">            appointment.setDoctor(doctor);</span>
+        }
+
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        if (request.patientId() != null) {</span>
+<span class="nc" id="L297">            User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="nc" id="L298">            Role currentRole = currentUser.getRole();</span>
+
+<span class="nc bnc" id="L300" title="All 4 branches missed.">            if (currentRole == Role.SUPER_ADMIN || currentRole == Role.ADMIN) {</span>
+<span class="nc" id="L301">                Patient patient = patientRepository.findById(request.patientId())</span>
+<span class="nc" id="L302">                        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Patient not found with id: &quot; + request.patientId()));</span>
+<span class="nc" id="L303">                appointment.setPatient(patient);</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">            } else if (currentRole == Role.DOCTOR) {</span>
+<span class="nc" id="L305">                throw new AccessDeniedException(&quot;Doctors are not allowed to reassign patient ownership&quot;);</span>
+            } else {
+<span class="nc" id="L307">                Patient selfPatient = resolveSelfPatient(currentUser);</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">                if (!request.patientId().equals(selfPatient.getPatientId())) {</span>
+<span class="nc" id="L309">                    throw new AccessDeniedException(&quot;Patients can only update their own appointment record&quot;);</span>
+                }
+            }
+        }
+
+<span class="fc bfc" id="L314" title="All 4 branches covered.">        if (request.doctorId() != null || request.appointmentDateTime() != null) {</span>
+            // Reassignment and rescheduling both require validation against
+            // the effective doctor's booking rules and the effective time.
+<span class="fc" id="L317">            assertWithinOperatingHours(doctorId, newDateTime);</span>
+<span class="fc" id="L318">            assertDoctorSlotAvailability(doctorId, newDateTime, newDateTime.plus(slotDuration), appointmentId);</span>
+<span class="nc" id="L319">            assertWithinWorkingHours(doctorId, newDateTime, newDateTime.plus(slotDuration), appointmentId);</span>
+        }
+
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (request.appointmentDateTime() != null) {</span>
+<span class="nc" id="L323">            appointment.setAppointmentDate(newDateTime.toLocalDate());</span>
+<span class="nc" id="L324">            appointment.setTimeSlot(newDateTime.toLocalTime());</span>
+        }
+
+<span class="fc bfc" id="L327" title="All 2 branches covered.">        if (request.reason() != null) {</span>
+<span class="fc" id="L328">            appointment.setReason(request.reason());</span>
+        }
+
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (request.clinicalNotes() != null) {</span>
+<span class="fc" id="L332">            appointment.setClinicalNotes(request.clinicalNotes());</span>
+        }
+
+<span class="fc" id="L335">        Appointment saved = saveWithSlotProtection(appointment, doctorId, newDateTime, appointmentId);</span>
+<span class="fc" id="L336">        log.info(&quot;Updated appointment {} to doctor {}, patient {}, slot {}&quot;,</span>
+<span class="fc" id="L337">                saved.getAppointmentId(),</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">                saved.getDoctor() != null ? saved.getDoctor().getUserId() : null,</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">                saved.getPatient() != null ? saved.getPatient().getPatientId() : null,</span>
+                newDateTime);
+<span class="fc" id="L341">        return mapAppointment(saved, getCurrentAuthenticatedUser());</span>
+    }
+
+    @Override
+    @Audited(action = &quot;APPOINTMENT_CANCEL&quot;, module = &quot;APPOINTMENT&quot;)
+    public AppointmentResponse cancelAppointment(Long appointmentId) {
+<span class="fc" id="L347">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="pc" id="L348">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Appointment not found with id: &quot; + appointmentId));</span>
+
+<span class="fc" id="L350">        assertAppointmentAccess(appointment);</span>
+
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">        if (appointment.getStatus() == AppointmentStatus.CANCELLED) {</span>
+<span class="nc" id="L353">            return mapAppointment(appointment, getCurrentAuthenticatedUser());</span>
+        }
+
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (appointment.getStatus() == AppointmentStatus.COMPLETED) {</span>
+<span class="fc" id="L357">            throw new InvalidAppointmentStatusException(&quot;Cannot cancel a completed appointment&quot;);</span>
+        }
+
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {</span>
+<span class="fc" id="L361">            throw new InvalidAppointmentStatusException(&quot;Cannot cancel a no-show appointment&quot;);</span>
+        }
+
+<span class="nc" id="L364">        appointment.setStatus(AppointmentStatus.CANCELLED);</span>
+<span class="nc" id="L365">        Appointment saved = appointmentRepository.save(appointment);</span>
+<span class="nc" id="L366">        log.info(&quot;Cancelled appointment {}&quot;, saved.getAppointmentId());</span>
+<span class="nc" id="L367">        return mapAppointment(saved, getCurrentAuthenticatedUser());</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AppointmentClinicalNotesResponse getClinicalNotes(Long appointmentId) {
+<span class="fc" id="L373">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="fc" id="L374">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Appointment not found with id: &quot; + appointmentId));</span>
+
+<span class="fc" id="L376">        User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc" id="L377">        Role currentRole = currentUser.getRole();</span>
+
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (currentRole == Role.DOCTOR) {</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">            if (appointment.getDoctor() == null</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">                    || !appointment.getDoctor().getUserId().equals(currentUser.getUserId())) {</span>
+<span class="fc" id="L382">                throw new AccessDeniedException(</span>
+                        &quot;Doctors can only read clinical notes of their own appointments&quot;);
+            }
+<span class="fc" id="L385">            return AppointmentClinicalNotesResponse.from(appointment);</span>
+        }
+
+        // AC4/Table 9: clinical notes are restricted to doctors. Pharmacists
+        // (and Admin / Super Admin) are denied here as defence in depth behind
+        // the endpoint-level permission (APPOINTMENT_READ_CLINICAL_NOTES).
+<span class="fc" id="L391">        throw new AccessDeniedException(&quot;Clinical notes are restricted to doctors&quot;);</span>
+    }
+
+    /**
+     * Clinical notes are written only by doctors (APPOINTMENT_WRITE_CLINICAL_NOTES).
+     * Any other caller sending a non-null clinicalNotes value is rejected.
+     */
+    private void assertCanWriteClinicalNotes() {
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        if (!SecurityUtil.hasPermission(Permission.APPOINTMENT_WRITE_CLINICAL_NOTES)) {</span>
+<span class="fc" id="L400">            throw new AccessDeniedException(&quot;Only doctors can record clinical notes&quot;);</span>
+        }
+<span class="fc" id="L402">    }</span>
+
+    private AppointmentResponse mapAppointment(Appointment appointment, User currentUser) {
+<span class="fc" id="L405">        boolean includeClinicalNotes =</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">                SecurityUtil.hasPermission(Permission.APPOINTMENT_READ_CLINICAL_NOTES)</span>
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">                        &amp;&amp; (currentUser.getRole() != Role.DOCTOR</span>
+<span class="pc bpc" id="L408" title="1 of 2 branches missed.">                                || (appointment.getDoctor() != null</span>
+<span class="fc" id="L409">                                        &amp;&amp; appointment.getDoctor().getUserId()</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">                                                .equals(currentUser.getUserId())));</span>
+<span class="fc" id="L411">        return AppointmentResponse.from(appointment, includeClinicalNotes);</span>
+    }
+
+    private void lockDoctor(Long doctorId) {
+<span class="fc" id="L415">        userRepository.findByIdForUpdate(doctorId)</span>
+<span class="pc" id="L416">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + doctorId));</span>
+<span class="fc" id="L417">    }</span>
+
+    private Appointment saveWithSlotProtection(Appointment appointment, Long doctorId, LocalDateTime requestedStart,
+            Long excludeAppointmentId) {
+<span class="fc" id="L421">        List&lt;String&gt; alternatives = findAlternativeSlots(doctorId, requestedStart.toLocalDate(), requestedStart,</span>
+<span class="fc" id="L422">                requestedStart.plus(slotDuration), excludeAppointmentId);</span>
+
+        try {
+<span class="fc" id="L425">            return appointmentRepository.saveAndFlush(appointment);</span>
+<span class="fc" id="L426">        } catch (DataIntegrityViolationException exception) {</span>
+<span class="fc" id="L427">            throw new SlotConflictException(</span>
+                    &quot;Appointment slot is unavailable for doctor &quot; + doctorId + &quot;. Requested slot: &quot; + requestedStart,
+<span class="fc" id="L429">                    requestedStart.toString(),</span>
+                    alternatives);
+        }
+    }
+
+    /**
+     * Booking and rescheduling must land on the slot grid of the time source
+     * that governs the doctor, so an appointment is never silently created
+     * that the availability display (getAvailableSlots / alternative slots)
+     * never shows.
+     *
+     * &lt;p&gt;A doctor with a configured schedule (DDP-20 rework) is governed by
+     * it: their working windows may sit outside the clinic-wide operating
+     * hours (e.g. a 09:00-12:00 schedule when the clinic-hours default starts
+     * at 16:00), and the schedule is exactly what availability offers. The
+     * clinic gate is therefore skipped for them and the window + grid checks
+     * in {@link #assertWithinWorkingHours} apply instead. Doctors without a
+     * schedule keep the clinic-wide fallback: at or after operating start,
+     * ending at or before operating end, aligned to the slot duration (e.g.
+     * 16:00, 16:30, ... 20:30 with the default 16:00-21:00 / 30-minute
+     * config). Off-grid or out-of-hours times are rejected with 400.
+     */
+    private void assertWithinOperatingHours(Long doctorId, LocalDateTime requestedStart) {
+<span class="fc bfc" id="L452" title="All 4 branches covered.">        if (doctorScheduleRepository != null &amp;&amp; hasAnySchedule(doctorId)) {</span>
+<span class="fc" id="L453">            return; // the configured schedule is authoritative (DDP-20 rework)</span>
+        }
+
+<span class="fc" id="L456">        LocalTime start = requestedStart.toLocalTime();</span>
+<span class="fc" id="L457">        LocalDateTime requestedEnd = requestedStart.plus(slotDuration);</span>
+<span class="fc" id="L458">        LocalDateTime operatingEnd = LocalDateTime.of(requestedStart.toLocalDate(), operatingEndTime);</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        boolean withinHours = !start.isBefore(operatingStartTime)</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">                &amp;&amp; !requestedEnd.isAfter(operatingEnd);</span>
+
+<span class="fc" id="L462">        long offsetSeconds = Duration.between(operatingStartTime, start).getSeconds();</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        boolean alignedToGrid = offsetSeconds &gt;= 0</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">                &amp;&amp; offsetSeconds % slotDuration.toSeconds() == 0</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">                &amp;&amp; start.getNano() == 0;</span>
+
+<span class="fc bfc" id="L467" title="All 4 branches covered.">        if (!withinHours || !alignedToGrid) {</span>
+<span class="fc" id="L468">            throw new BusinessRuleException(String.format(</span>
+                    &quot;Appointment time must be a clinic slot between %s and %s, aligned to %d-minute &quot;
+                            + &quot;intervals (requested: %s)&quot;,
+<span class="fc" id="L471">                    operatingStartTime, operatingEndTime, slotDuration.toMinutes(), requestedStart));</span>
+        }
+<span class="fc" id="L473">    }</span>
+
+    private void assertDoctorSlotAvailability(Long doctorId, LocalDateTime requestedStart, LocalDateTime requestedEnd,
+            Long excludeAppointmentId) {
+<span class="fc" id="L477">        List&lt;Appointment&gt; appointments = appointmentRepository.findByDoctor_UserIdAndAppointmentDate(</span>
+<span class="fc" id="L478">                doctorId, requestedStart.toLocalDate());</span>
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        if (hasAppointmentOverlap(appointments, requestedStart, requestedEnd, excludeAppointmentId)) {</span>
+<span class="fc" id="L480">            throw new SlotConflictException(</span>
+                    &quot;Appointment slot is unavailable for doctor &quot; + doctorId + &quot;. Requested slot: &quot;
+                            + requestedStart,
+<span class="fc" id="L483">                    requestedStart.toString(),</span>
+<span class="fc" id="L484">                    findAlternativeSlots(doctorId, requestedStart.toLocalDate(), requestedStart, requestedEnd,</span>
+                            excludeAppointmentId));
+        }
+<span class="fc" id="L487">    }</span>
+
+    private List&lt;String&gt; findAlternativeSlots(Long doctorId, LocalDate appointmentDate, LocalDateTime requestedStart,
+            LocalDateTime requestedEnd, Long excludeAppointmentId) {
+<span class="fc" id="L491">        List&lt;String&gt; alternatives = new ArrayList&lt;&gt;();</span>
+
+        // Real doctor schedule (DDP-20 rework): candidates only inside the
+        // doctor's working windows; a non-working day offers no alternatives.
+<span class="fc" id="L495">        List&lt;DoctorSchedule&gt; windows = workingWindowsForDay(doctorId, appointmentDate.getDayOfWeek());</span>
+<span class="pc bpc" id="L496" title="1 of 4 branches missed.">        if (!windows.isEmpty() &amp;&amp; hasAnySchedule(doctorId)) {</span>
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">            for (DoctorSchedule window : windows) {</span>
+<span class="fc" id="L498">                LocalDateTime candidate = LocalDateTime.of(appointmentDate, window.getStartTime());</span>
+<span class="fc" id="L499">                LocalDateTime windowEnd = LocalDateTime.of(appointmentDate, window.getEndTime());</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                while (!candidate.plus(slotDuration).isAfter(windowEnd)</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">                        &amp;&amp; alternatives.size() &lt; 5) {</span>
+<span class="fc" id="L502">                    LocalDateTime candidateEnd = candidate.plus(slotDuration);</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">                    if (freeOfAppointments(doctorId, appointmentDate, candidate, candidateEnd, excludeAppointmentId)</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">                            &amp;&amp; !candidate.equals(requestedStart)) {</span>
+<span class="fc" id="L505">                        alternatives.add(candidate.toString());</span>
+                    }
+<span class="fc" id="L507">                    candidate = candidate.plus(slotDuration);</span>
+<span class="fc" id="L508">                }</span>
+<span class="pc bpc" id="L509" title="1 of 2 branches missed.">                if (alternatives.size() &gt;= 5) {</span>
+<span class="fc" id="L510">                    break;</span>
+                }
+<span class="nc" id="L512">            }</span>
+<span class="fc" id="L513">            return alternatives;</span>
+        }
+
+<span class="fc" id="L516">        LocalDateTime candidate = LocalDateTime.of(appointmentDate, operatingStartTime);</span>
+<span class="fc" id="L517">        LocalDateTime operatingEnd = LocalDateTime.of(appointmentDate, operatingEndTime);</span>
+
+<span class="pc bpc" id="L519" title="1 of 4 branches missed.">        while (!candidate.plus(slotDuration).isAfter(operatingEnd) &amp;&amp; alternatives.size() &lt; 5) {</span>
+<span class="fc" id="L520">            LocalDateTime candidateEnd = candidate.plus(slotDuration);</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">            if (freeOfAppointments(doctorId, appointmentDate, candidate, candidateEnd, excludeAppointmentId)</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">                    &amp;&amp; !candidate.equals(requestedStart)) {</span>
+<span class="fc" id="L523">                alternatives.add(candidate.toString());</span>
+            }
+<span class="fc" id="L525">            candidate = candidate.plus(slotDuration);</span>
+<span class="fc" id="L526">        }</span>
+
+<span class="fc" id="L528">        return alternatives;</span>
+    }
+
+    private boolean freeOfAppointments(Long doctorId, LocalDate appointmentDate, LocalDateTime candidateStart,
+            LocalDateTime candidateEnd, Long excludeAppointmentId) {
+<span class="fc" id="L533">        List&lt;Appointment&gt; appointments = appointmentRepository.findByDoctor_UserIdAndAppointmentDate(</span>
+                doctorId, appointmentDate);
+<span class="fc bfc" id="L535" title="All 2 branches covered.">        return !hasAppointmentOverlap(appointments, candidateStart, candidateEnd, excludeAppointmentId);</span>
+    }
+
+    private boolean hasAppointmentOverlap(List&lt;Appointment&gt; appointments, LocalDateTime candidateStart,
+            LocalDateTime candidateEnd, Long excludeAppointmentId) {
+<span class="fc" id="L540">        return appointments.stream()</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">                .filter(appointment -&gt; excludeAppointmentId == null</span>
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">                        || appointment.getAppointmentId() == null</span>
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">                        || !appointment.getAppointmentId().equals(excludeAppointmentId))</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">                .filter(appointment -&gt; appointment.getStatus() != AppointmentStatus.CANCELLED</span>
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">                        &amp;&amp; appointment.getStatus() != AppointmentStatus.NO_SHOW)</span>
+<span class="fc" id="L546">                .anyMatch(appointment -&gt; {</span>
+<span class="fc" id="L547">                    LocalDateTime existingStart =</span>
+<span class="fc" id="L548">                            LocalDateTime.of(appointment.getAppointmentDate(), appointment.getTimeSlot());</span>
+<span class="fc" id="L549">                    LocalDateTime existingEnd = existingStart.plus(slotDuration);</span>
+<span class="fc bfc" id="L550" title="All 4 branches covered.">                    return candidateStart.isBefore(existingEnd) &amp;&amp; existingStart.isBefore(candidateEnd);</span>
+                });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;String&gt; getAvailableSlots(Long doctorId, LocalDate date) {
+<span class="pc bpc" id="L557" title="2 of 4 branches missed.">        if (doctorId == null || doctorId &lt;= 0) {</span>
+<span class="nc" id="L558">            throw new IllegalArgumentException(&quot;Doctor ID must be a positive number&quot;);</span>
+        }
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">        if (date == null) {</span>
+<span class="nc" id="L561">            throw new IllegalArgumentException(&quot;Date is required&quot;);</span>
+        }
+
+<span class="fc" id="L564">        User doctor = userRepository.findById(doctorId)</span>
+<span class="pc" id="L565">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Doctor not found with id: &quot; + doctorId));</span>
+        // Same guard as public booking (PublicAppointmentServiceImpl): this
+        // endpoint is public (permitAll), so inactive doctors must not leak
+        // their slot grid either.
+<span class="fc bfc" id="L569" title="All 4 branches covered.">        if (doctor.getRole() != Role.DOCTOR || !Boolean.TRUE.equals(doctor.getIsActive())) {</span>
+<span class="fc" id="L570">            throw new BusinessRuleException(</span>
+                    &quot;Specified user with id: &quot; + doctorId + &quot; is not an active doctor&quot;);
+        }
+
+<span class="fc bfc" id="L574" title="All 2 branches covered.">        if (date.isBefore(LocalDate.now())) {</span>
+<span class="fc" id="L575">            return List.of();</span>
+        }
+
+<span class="fc" id="L578">        List&lt;Appointment&gt; existingAppointments = appointmentRepository</span>
+<span class="fc" id="L579">                .findByDoctor_UserIdAndAppointmentDate(doctorId, date);</span>
+
+<span class="fc" id="L581">        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(&quot;HH:mm&quot;);</span>
+<span class="fc" id="L582">        List&lt;String&gt; availableSlots = new ArrayList&lt;&gt;();</span>
+
+        // Real doctor schedule (DDP-20 rework): a doctor with a configured
+        // schedule is only bookable on working days, inside their windows.
+<span class="fc" id="L586">        List&lt;DoctorSchedule&gt; windows = workingWindowsForDay(doctorId, date.getDayOfWeek());</span>
+<span class="fc bfc" id="L587" title="All 2 branches covered.">        if (hasAnySchedule(doctorId)) {</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">            if (windows.isEmpty()) {</span>
+<span class="fc" id="L589">                return List.of(); // non-working day</span>
+            }
+<span class="fc bfc" id="L591" title="All 2 branches covered.">            for (DoctorSchedule window : windows) {</span>
+<span class="fc" id="L592">                LocalDateTime candidate = LocalDateTime.of(date, window.getStartTime());</span>
+<span class="fc" id="L593">                LocalDateTime windowEnd = LocalDateTime.of(date, window.getEndTime());</span>
+<span class="fc bfc" id="L594" title="All 2 branches covered.">                while (!candidate.plus(slotDuration).isAfter(windowEnd)) {</span>
+<span class="fc" id="L595">                    LocalTime candidateTime = candidate.toLocalTime();</span>
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">                    boolean isPast = date.isEqual(LocalDate.now())</span>
+<span class="pc bnc" id="L597" title="All 2 branches missed.">                            &amp;&amp; !candidate.isAfter(LocalDateTime.now());</span>
+<span class="pc bpc" id="L598" title="1 of 4 branches missed.">                    if (!isPast &amp;&amp; !hasAppointmentOverlap(</span>
+<span class="fc" id="L599">                            existingAppointments, candidate, candidate.plus(slotDuration), null)) {</span>
+<span class="fc" id="L600">                        availableSlots.add(candidateTime.format(formatter));</span>
+                    }
+<span class="fc" id="L602">                    candidate = candidate.plus(slotDuration);</span>
+<span class="fc" id="L603">                }</span>
+<span class="fc" id="L604">            }</span>
+<span class="fc" id="L605">            return availableSlots;</span>
+        }
+
+        // Fallback: clinic-wide operating hours until a schedule is configured
+<span class="fc" id="L609">        LocalDateTime candidate = LocalDateTime.of(date, operatingStartTime);</span>
+<span class="fc" id="L610">        LocalDateTime operatingEnd = LocalDateTime.of(date, operatingEndTime);</span>
+
+<span class="fc bfc" id="L612" title="All 2 branches covered.">        while (!candidate.plus(slotDuration).isAfter(operatingEnd)) {</span>
+<span class="fc" id="L613">            LocalTime candidateTime = candidate.toLocalTime();</span>
+<span class="pc bpc" id="L614" title="1 of 2 branches missed.">            boolean isPast = date.isEqual(LocalDate.now())</span>
+<span class="pc bnc" id="L615" title="All 2 branches missed.">                    &amp;&amp; !candidate.isAfter(LocalDateTime.now());</span>
+
+<span class="pc bpc" id="L617" title="1 of 4 branches missed.">            if (!isPast &amp;&amp; !hasAppointmentOverlap(</span>
+<span class="fc" id="L618">                    existingAppointments, candidate, candidate.plus(slotDuration), null)) {</span>
+<span class="fc" id="L619">                availableSlots.add(candidateTime.format(formatter));</span>
+            }
+<span class="fc" id="L621">            candidate = candidate.plus(slotDuration);</span>
+<span class="fc" id="L622">        }</span>
+
+<span class="fc" id="L624">        return availableSlots;</span>
+    }
+
+    /** True when the doctor has any configured schedule rows (DDP-20 rework). */
+    private boolean hasAnySchedule(Long doctorId) {
+<span class="fc bfc" id="L629" title="All 2 branches covered.">        return doctorScheduleRepository != null</span>
+<span class="fc bfc" id="L630" title="All 2 branches covered.">                &amp;&amp; !doctorScheduleRepository.findByDoctorUserIdOrderByStartTimeAsc(doctorId).isEmpty();</span>
+    }
+
+    private List&lt;DoctorSchedule&gt; workingWindowsForDay(Long doctorId, DayOfWeek dayOfWeek) {
+<span class="fc bfc" id="L634" title="All 2 branches covered.">        if (doctorScheduleRepository == null) {</span>
+<span class="fc" id="L635">            return List.of();</span>
+        }
+<span class="fc" id="L637">        return doctorScheduleRepository.findByDoctorUserIdAndDayOfWeekOrderByStartTimeAsc(doctorId, dayOfWeek)</span>
+<span class="fc" id="L638">                .stream()</span>
+<span class="fc" id="L639">                .filter(DoctorSchedule::isAvailable)</span>
+<span class="fc" id="L640">                .toList();</span>
+    }
+
+    /**
+     * Booking must use real availability (FR009): when the doctor has a
+     * configured schedule, the requested slot must fall inside a working
+     * window of that day AND on that window's slot grid; a non-working day
+     * is rejected outright. Doctors without a schedule keep the clinic-hours
+     * fallback (enforced by {@link #assertWithinOperatingHours}).
+     */
+    private void assertWithinWorkingHours(Long doctorId, LocalDateTime requestedStart, LocalDateTime requestedEnd,
+            Long excludeAppointmentId) {
+<span class="fc bfc" id="L652" title="All 4 branches covered.">        if (doctorScheduleRepository == null || !hasAnySchedule(doctorId)) {</span>
+<span class="fc" id="L653">            return;</span>
+        }
+<span class="fc" id="L655">        List&lt;DoctorSchedule&gt; windows = workingWindowsForDay(doctorId, requestedStart.getDayOfWeek());</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">        if (windows.isEmpty()) {</span>
+<span class="fc" id="L657">            throw new SlotConflictException(</span>
+<span class="fc" id="L658">                    &quot;Doctor &quot; + doctorId + &quot; does not work on &quot; + requestedStart.getDayOfWeek()</span>
+                            + &quot;. Requested slot: &quot; + requestedStart,
+<span class="fc" id="L660">                    requestedStart.toString(),</span>
+<span class="fc" id="L661">                    List.of());</span>
+        }
+<span class="pc bpc" id="L663" title="1 of 2 branches missed.">        boolean crossesMidnight = !requestedEnd.toLocalDate().equals(requestedStart.toLocalDate());</span>
+<span class="pc bpc" id="L664" title="1 of 4 branches missed.">        boolean within = !crossesMidnight &amp;&amp; windows.stream().anyMatch(window -&gt;</span>
+<span class="fc bfc" id="L665" title="All 2 branches covered.">                !requestedStart.toLocalTime().isBefore(window.getStartTime())</span>
+<span class="fc bfc" id="L666" title="All 2 branches covered.">                        &amp;&amp; !requestedEnd.toLocalTime().isAfter(window.getEndTime()));</span>
+<span class="fc bfc" id="L667" title="All 2 branches covered.">        if (!within) {</span>
+<span class="fc" id="L668">            throw new SlotConflictException(</span>
+                    &quot;Requested slot is outside the working hours of doctor &quot; + doctorId
+                            + &quot;. Requested slot: &quot; + requestedStart,
+<span class="fc" id="L671">                    requestedStart.toString(),</span>
+<span class="fc" id="L672">                    findAlternativeSlots(doctorId, requestedStart.toLocalDate(), requestedStart, requestedEnd,</span>
+                            excludeAppointmentId));
+        }
+
+        // On-grid inside the covering window: availability and alternatives are
+        // generated at window-start + n x slotDuration, so an off-grid time
+        // (e.g. 09:15 in a 09:00-12:00 window) is never offered and must not
+        // be bookable either — rejected with 400 like the clinic-grid gate.
+<span class="fc" id="L680">        boolean onGrid = windows.stream().anyMatch(window -&gt; {</span>
+<span class="pc bpc" id="L681" title="1 of 2 branches missed.">            boolean covers = !requestedStart.toLocalTime().isBefore(window.getStartTime())</span>
+<span class="pc bpc" id="L682" title="1 of 2 branches missed.">                    &amp;&amp; !requestedEnd.toLocalTime().isAfter(window.getEndTime());</span>
+<span class="pc bpc" id="L683" title="1 of 2 branches missed.">            if (!covers) {</span>
+<span class="nc" id="L684">                return false;</span>
+            }
+<span class="fc" id="L686">            long offsetSeconds =</span>
+<span class="fc" id="L687">                    Duration.between(window.getStartTime(), requestedStart.toLocalTime()).getSeconds();</span>
+<span class="pc bpc" id="L688" title="1 of 2 branches missed.">            return offsetSeconds &gt;= 0</span>
+<span class="fc bfc" id="L689" title="All 2 branches covered.">                    &amp;&amp; offsetSeconds % slotDuration.toSeconds() == 0</span>
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">                    &amp;&amp; requestedStart.getNano() == 0;</span>
+        });
+<span class="fc bfc" id="L692" title="All 2 branches covered.">        if (!onGrid) {</span>
+<span class="fc" id="L693">            throw new BusinessRuleException(String.format(</span>
+                    &quot;Appointment time must be aligned to %d-minute slots inside the doctor's working window &quot;
+                            + &quot;(requested: %s)&quot;,
+<span class="fc" id="L696">                    slotDuration.toMinutes(), requestedStart));</span>
+        }
+<span class="fc" id="L698">    }</span>
+
+    private User getCurrentAuthenticatedUser() {
+<span class="fc" id="L701">        Long currentUserId = SecurityUtil.getCurrentUserId()</span>
+<span class="pc" id="L702">                .orElseThrow(() -&gt; new AccessDeniedException(&quot;Authentication required&quot;));</span>
+
+<span class="fc" id="L704">        return userRepository.findById(currentUserId)</span>
+<span class="pc" id="L705">                .orElseThrow(() -&gt; new AccessDeniedException(&quot;Authenticated user not found&quot;));</span>
+    }
+
+    private void assertAppointmentAccess(Appointment appointment) {
+<span class="fc" id="L709">        User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc" id="L710">        Role currentRole = currentUser.getRole();</span>
+
+<span class="pc bpc" id="L712" title="1 of 4 branches missed.">        if (currentRole == Role.SUPER_ADMIN || currentRole == Role.ADMIN) {</span>
+<span class="fc" id="L713">            return;</span>
+        }
+
+<span class="fc bfc" id="L716" title="All 2 branches covered.">        if (currentRole == Role.DOCTOR) {</span>
+<span class="pc bpc" id="L717" title="1 of 4 branches missed.">            if (appointment.getDoctor() != null &amp;&amp; appointment.getDoctor().getUserId().equals(currentUser.getUserId())) {</span>
+<span class="fc" id="L718">                return;</span>
+            }
+<span class="fc" id="L720">            throw new AccessDeniedException(&quot;Doctors can only manage their own appointments&quot;);</span>
+        }
+
+<span class="fc" id="L723">        Patient selfPatient = resolveSelfPatient(currentUser);</span>
+<span class="pc bpc" id="L724" title="1 of 2 branches missed.">        if (appointment.getPatient() == null</span>
+<span class="pc bpc" id="L725" title="1 of 2 branches missed.">                || !appointment.getPatient().getPatientId().equals(selfPatient.getPatientId())) {</span>
+<span class="nc" id="L726">            throw new AccessDeniedException(&quot;Patients can only manage their own appointments&quot;);</span>
+        }
+<span class="fc" id="L728">    }</span>
+
+    private Patient resolveTrustedPatient(Long requestedPatientId) {
+<span class="fc" id="L731">        User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc" id="L732">        Role currentRole = currentUser.getRole();</span>
+
+<span class="pc bpc" id="L734" title="1 of 4 branches missed.">        if (currentRole == Role.SUPER_ADMIN || currentRole == Role.ADMIN) {</span>
+<span class="fc" id="L735">            return patientRepository.findById(requestedPatientId)</span>
+<span class="pc" id="L736">                    .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Patient not found with id: &quot; + requestedPatientId));</span>
+        }
+
+<span class="pc bpc" id="L739" title="1 of 2 branches missed.">        if (currentRole == Role.DOCTOR) {</span>
+<span class="nc" id="L740">            throw new AccessDeniedException(&quot;Doctors are not allowed to create appointments for patients&quot;);</span>
+        }
+
+<span class="fc" id="L743">        Patient patient = patientRepository.findById(requestedPatientId)</span>
+<span class="pc" id="L744">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Patient not found with id: &quot; + requestedPatientId));</span>
+
+<span class="pc bpc" id="L746" title="2 of 4 branches missed.">        if (patient.getEmail() == null || currentUser.getEmail() == null</span>
+<span class="pc bpc" id="L747" title="1 of 2 branches missed.">                || !patient.getEmail().equalsIgnoreCase(currentUser.getEmail())) {</span>
+<span class="nc" id="L748">            throw new AccessDeniedException(&quot;Patients can only create appointments for themselves&quot;);</span>
+        }
+
+<span class="fc" id="L751">        return patient;</span>
+    }
+
+    private Patient resolveSelfPatient(User currentUser) {
+<span class="fc" id="L755">        return patientRepository.findAll().stream()</span>
+<span class="pc bpc" id="L756" title="1 of 2 branches missed.">                .filter(patient -&gt; patient.getEmail() != null</span>
+<span class="pc bpc" id="L757" title="1 of 2 branches missed.">                        &amp;&amp; currentUser.getEmail() != null</span>
+<span class="pc bpc" id="L758" title="1 of 2 branches missed.">                        &amp;&amp; patient.getEmail().equalsIgnoreCase(currentUser.getEmail()))</span>
+<span class="fc" id="L759">                .findFirst()</span>
+<span class="pc" id="L760">                .orElseThrow(() -&gt; new AccessDeniedException(&quot;No trusted patient profile found for the current user&quot;));</span>
+    }
+
+    private void validateCreateRequest(CreateAppointmentRequest request) {
+<span class="pc bpc" id="L764" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L765">            throw new InvalidAppointmentStatusException(&quot;Appointment request is required&quot;);</span>
+        }
+
+<span class="pc bpc" id="L768" title="2 of 4 branches missed.">        if (request.doctorId() == null || request.doctorId() &lt;= 0) {</span>
+<span class="nc" id="L769">            throw new IllegalArgumentException(&quot;Doctor ID must be a positive number&quot;);</span>
+        }
+
+<span class="pc bpc" id="L772" title="2 of 4 branches missed.">        if (request.patientId() == null || request.patientId() &lt;= 0) {</span>
+<span class="nc" id="L773">            throw new IllegalArgumentException(&quot;Patient ID must be a positive number&quot;);</span>
+        }
+
+<span class="pc bpc" id="L776" title="2 of 4 branches missed.">        if (request.appointmentDateTime() == null || !request.appointmentDateTime().isAfter(LocalDateTime.now())) {</span>
+<span class="nc" id="L777">            throw new IllegalArgumentException(&quot;Appointment date/time must be in the future&quot;);</span>
+        }
+<span class="fc" id="L779">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

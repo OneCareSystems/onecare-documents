@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KnowledgeBaseService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.knowledgebase</a> &gt; <span class="el_source">KnowledgeBaseService.java</span></div><h1>KnowledgeBaseService.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.knowledgebase;
+
+import com.onecare.backend.security.SecurityUtil;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+
+@Service
+public class KnowledgeBaseService {
+
+    private final KnowledgeBaseClient chatbot;
+    private final ApprovedUrlValidator urlValidator;
+    private final KnowledgeBaseSubmission submission;
+
+    public KnowledgeBaseService(
+            KnowledgeBaseClient chatbot,
+            ApprovedUrlValidator urlValidator,
+            KnowledgeBaseSubmission submission
+<span class="fc" id="L20">    ) {</span>
+<span class="fc" id="L21">        this.chatbot = chatbot;</span>
+<span class="fc" id="L22">        this.urlValidator = urlValidator;</span>
+<span class="fc" id="L23">        this.submission = submission;</span>
+<span class="fc" id="L24">    }</span>
+
+    public KnowledgeDocumentResponse submitLink(String url) {
+
+<span class="fc" id="L28">        String approvedUrl = urlValidator.validate(url);</span>
+
+       
+<span class="fc" id="L31">        Long actorId = SecurityUtil.getCurrentUserId()</span>
+<span class="fc" id="L32">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L33">                        new AccessDeniedException(</span>
+                                &quot;Authentication is required.&quot;
+                        )
+                );
+
+       
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (!SecurityUtil.hasAnyRole(&quot;DOCTOR&quot;, &quot;SUPER_ADMIN&quot;)) {</span>
+<span class="fc" id="L40">            throw new AccessDeniedException(</span>
+                    &quot;Insufficient permissions.&quot;
+            );
+        }
+
+        
+<span class="fc" id="L46">        return submission.submitApprovedLink(approvedUrl, actorId);</span>
+    }
+
+    private Long actor() {
+<span class="fc" id="L50">        Long id = SecurityUtil.getCurrentUserId().orElseThrow(() -&gt; new AccessDeniedException(&quot;Authentication is required.&quot;));</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (!SecurityUtil.hasAnyRole(&quot;DOCTOR&quot;, &quot;SUPER_ADMIN&quot;)) throw new AccessDeniedException(&quot;Insufficient permissions.&quot;);</span>
+<span class="nc" id="L52">        return id;</span>
+    }
+
+    @com.onecare.backend.audit.Audited(action = &quot;KB_PDF_UPLOADED&quot;, module = &quot;CHATBOT&quot;)
+    public KnowledgeDocumentResponse uploadPdf(MultipartFile file, String title) {
+<span class="nc" id="L57">        Long actorId = actor();</span>
+<span class="nc bnc" id="L58" title="All 4 branches missed.">        if (file == null || file.isEmpty()) throw new InvalidInputException(&quot;A PDF file is required.&quot;);</span>
+<span class="nc" id="L59">        return chatbot.uploadPdf(file, title, actorId); // Django remains authoritative for content/size validation.</span>
+    }
+
+    public KnowledgeDocumentPage list(int page, int pageSize, String sourceType, String status) {
+<span class="nc" id="L63">        Long actorId = actor();</span>
+<span class="nc bnc" id="L64" title="All 6 branches missed.">        if (page &lt; 1 || pageSize &lt; 1 || pageSize &gt; 100) throw new InvalidInputException(&quot;Invalid pagination.&quot;);</span>
+<span class="nc" id="L65">        return chatbot.list(page, pageSize, sourceType, status, actorId);</span>
+    }
+
+    public KnowledgeDocumentResponse get(long id) {
+<span class="nc" id="L69">        Long actorId = actor();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (id &lt; 1) throw new InvalidInputException(&quot;A positive resource ID is required.&quot;);</span>
+<span class="nc" id="L71">        return chatbot.get(id, actorId);</span>
+    }
+
+    @com.onecare.backend.audit.Audited(action = &quot;KB_RESOURCE_REMOVED&quot;, module = &quot;CHATBOT&quot;)
+    public void remove(long id) {
+<span class="nc" id="L76">        Long actorId = actor();</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (id &lt; 1) throw new InvalidInputException(&quot;A positive resource ID is required.&quot;);</span>
+<span class="nc" id="L78">        chatbot.remove(id, actorId);</span>
+<span class="nc" id="L79">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

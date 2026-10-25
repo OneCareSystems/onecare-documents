@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalDispensingResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.response</a> &gt; <span class="el_source">ExternalDispensingResponse.java</span></div><h1>ExternalDispensingResponse.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.response;
+
+import com.onecare.backend.entity.DispensingItem;
+import com.onecare.backend.entity.ExternalDispensing;
+import com.onecare.backend.enums.DeliveryMethod;
+import com.onecare.backend.enums.Status;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+<span class="fc" id="L11">public record ExternalDispensingResponse(</span>
+        Long dispenseId,
+        Long prescriptionId,
+        Long patientId,
+        String verificationMethod,
+        String verificationStatus,
+        Status status,
+        DeliveryMethod deliveryMethod,
+        LocalDateTime dispenseDate,
+        LocalDateTime dispensedAt,
+        LocalDateTime verifiedAt,
+        Integer retryCount,
+        Long auditLogId,
+        List&lt;ExternalDispensingItemResponse&gt; items) {
+
+    public static ExternalDispensingResponse from(ExternalDispensing entity) {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (entity == null) {</span>
+<span class="nc" id="L28">            return null;</span>
+        }
+
+<span class="fc" id="L31">        return new ExternalDispensingResponse(</span>
+<span class="fc" id="L32">                entity.getDispenseId(),</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                entity.getPrescription() != null ? entity.getPrescription().getPrescriptionId() : null,</span>
+<span class="fc" id="L34">                entity.getPatientId(),</span>
+<span class="fc" id="L35">                entity.getVerificationMethod(),</span>
+<span class="fc" id="L36">                entity.getVerificationStatus(),</span>
+<span class="fc" id="L37">                entity.getStatus(),</span>
+<span class="fc" id="L38">                entity.getDeliveryMethod(),</span>
+<span class="fc" id="L39">                entity.getDispenseDate(),</span>
+<span class="fc" id="L40">                entity.getDispensedAt(),</span>
+<span class="fc" id="L41">                entity.getVerifiedAt(),</span>
+<span class="fc" id="L42">                entity.getRetryCount(),</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                entity.getAuditLog() != null</span>
+<span class="nc" id="L44">                        ? entity.getAuditLog().getLogId()</span>
+<span class="fc" id="L45">                        : null,</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                entity.getItems() == null ? List.of()</span>
+<span class="fc" id="L47">                        : entity.getItems().stream()</span>
+<span class="fc" id="L48">                                .map(ExternalDispensingItemResponse::from)</span>
+<span class="fc" id="L49">                                .toList());</span>
+    }
+}
+
+<span class="fc" id="L53">record ExternalDispensingItemResponse(</span>
+        Long dispensingItemId,
+        Long medicineId,
+        Long prescriptionItemId,
+        Integer quantityDispensed) {
+    static ExternalDispensingItemResponse from(DispensingItem item) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (item == null) {</span>
+<span class="nc" id="L60">            return null;</span>
+        }
+
+<span class="fc" id="L63">        return new ExternalDispensingItemResponse(</span>
+<span class="fc" id="L64">                item.getDispensingItemId(),</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                item.getMedicine() != null ? item.getMedicine().getMedicineId() : null,</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                item.getPrescriptionItem() != null ? item.getPrescriptionItem().getItemId() : null,</span>
+<span class="fc" id="L67">                item.getQuantityDispensed());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

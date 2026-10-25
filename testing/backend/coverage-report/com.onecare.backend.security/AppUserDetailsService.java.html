@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AppUserDetailsService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.security</a> &gt; <span class="el_source">AppUserDetailsService.java</span></div><h1>AppUserDetailsService.java</h1><pre class="source lang-java linenums">package com.onecare.backend.security;
+
+import com.onecare.backend.entity.RolePermissionEntity;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.repository.RolePermissionEntityRepository;
+import com.onecare.backend.repository.UserRepository;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
+@Service
+public class AppUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+    private final RolePermissionEntityRepository rolePermissionEntityRepository;
+
+    public AppUserDetailsService(UserRepository userRepository,
+<span class="fc" id="L26">            RolePermissionEntityRepository rolePermissionEntityRepository) {</span>
+<span class="fc" id="L27">        this.userRepository = userRepository;</span>
+<span class="fc" id="L28">        this.rolePermissionEntityRepository = rolePermissionEntityRepository;</span>
+<span class="fc" id="L29">    }</span>
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+
+<span class="fc" id="L34">        User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L35">                .orElseThrow(() -&gt; new UsernameNotFoundException(&quot;User not found: &quot; + username));</span>
+
+<span class="fc" id="L37">        LocalDateTime lockedUntil = user.getLockedUntil();</span>
+
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        boolean accountNonLocked =</span>
+                lockedUntil == null ||
+<span class="pc bnc" id="L41" title="All 2 branches missed.">                !lockedUntil.isAfter(LocalDateTime.now());</span>
+
+
+<span class="fc" id="L44">        Set&lt;GrantedAuthority&gt; authorities = new HashSet&lt;&gt;();</span>
+
+        // Role authority
+<span class="fc" id="L47">        authorities.add(new SimpleGrantedAuthority(&quot;ROLE_&quot; + user.getRole().name()));</span>
+
+        // Permission authorities: configurable per role (FR003). Falls back to
+        // the static defaults while a role has no persisted rows.
+<span class="fc" id="L51">        Set&lt;String&gt; permissions = rolePermissionEntityRepository.findByRole(user.getRole()).stream()</span>
+<span class="fc" id="L52">                .map(RolePermissionEntity::getPermission)</span>
+<span class="fc" id="L53">                .collect(java.util.stream.Collectors.toSet());</span>
+
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        if (permissions.isEmpty()) {</span>
+<span class="nc" id="L56">            permissions = RolePermission.getPermissions(user.getRole());</span>
+        }
+
+<span class="fc" id="L59">        permissions.forEach(permission -&gt;</span>
+<span class="fc" id="L60">                        authorities.add(</span>
+                                new SimpleGrantedAuthority(permission)
+                        )
+                );
+
+<span class="fc" id="L65">        return new AppUserDetails(</span>
+<span class="fc" id="L66">                user.getUserId(),</span>
+<span class="fc" id="L67">                user.getUsername(),</span>
+<span class="fc" id="L68">                user.getPasswordHash(),</span>
+<span class="fc" id="L69">                Boolean.TRUE.equals(user.getIsActive()),</span>
+                true,
+                true,
+                accountNonLocked,
+                authorities
+        );
+    }
+
+    public static class AppUserDetails implements UserDetails {
+        private final Long userId;
+        private final String username;
+        private final String password;
+        private final boolean enabled;
+        private final boolean accountNonExpired;
+        private final boolean credentialsNonExpired;
+        private final boolean accountNonLocked;
+        private final Collection&lt;? extends GrantedAuthority&gt; authorities;
+
+        public AppUserDetails(
+                Long userId, String username,
+                String password, boolean enabled,
+                boolean accountNonExpired, boolean credentialsNonExpired,
+<span class="fc" id="L91">                boolean accountNonLocked, Collection&lt;? extends GrantedAuthority&gt; authorities) {</span>
+
+<span class="fc" id="L93">            this.userId = userId;</span>
+<span class="fc" id="L94">            this.username = username;</span>
+<span class="fc" id="L95">            this.password = password;</span>
+<span class="fc" id="L96">            this.enabled = enabled;</span>
+<span class="fc" id="L97">            this.accountNonExpired = accountNonExpired;</span>
+<span class="fc" id="L98">            this.credentialsNonExpired = credentialsNonExpired;</span>
+<span class="fc" id="L99">            this.accountNonLocked = accountNonLocked;</span>
+<span class="fc" id="L100">            this.authorities = authorities;</span>
+<span class="fc" id="L101">        }</span>
+
+        public Long getUserId() {
+<span class="fc" id="L104">            return userId;</span>
+        }
+
+        @Override
+        public Collection&lt;? extends GrantedAuthority&gt; getAuthorities() {
+<span class="fc" id="L109">            return authorities;</span>
+        }
+
+        @Override
+        public String getPassword() {
+<span class="fc" id="L114">            return password;</span>
+        }
+
+        @Override
+        public String getUsername() {
+<span class="fc" id="L119">            return username;</span>
+        }
+
+        @Override
+        public boolean isEnabled() {
+<span class="fc" id="L124">            return enabled;</span>
+        }
+
+        @Override
+        public boolean isAccountNonExpired() {
+<span class="fc" id="L129">            return accountNonExpired;</span>
+        }
+
+        @Override
+        public boolean isCredentialsNonExpired() {
+<span class="fc" id="L134">            return credentialsNonExpired;</span>
+        }
+
+        @Override
+        public boolean isAccountNonLocked() {
+<span class="fc" id="L139">            return accountNonLocked;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MedicineController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">MedicineController.java</span></div><h1>MedicineController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.request.MedicineRequest;
+import com.onecare.backend.dto.request.StockUpdateRequest;
+import com.onecare.backend.dto.response.MedicineResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.MedicineService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/medicines&quot;)
+@Tag(
+        name = &quot;Medicine Management&quot;,
+        description = &quot;APIs for managing medicines and inventory&quot;
+)
+public class MedicineController {
+
+    private final MedicineService medicineService;
+
+<span class="fc" id="L34">    public MedicineController(MedicineService medicineService) {</span>
+<span class="fc" id="L35">        this.medicineService = medicineService;</span>
+<span class="fc" id="L36">    }</span>
+
+    @Operation(
+            summary = &quot;Create medicine&quot;,
+            description = &quot;Creates a new medicine record.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;201&quot;,
+                    description = &quot;Medicine created successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;400&quot;,
+                    description = &quot;Validation failed&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            )
+    })
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;MedicineResponse&gt;&gt; createMedicine(
+            @Valid @RequestBody MedicineRequest request
+    ) {
+
+<span class="nc" id="L62">        MedicineResponse response =</span>
+<span class="nc" id="L63">                medicineService.createMedicine(request);</span>
+
+<span class="nc" id="L65">        return new ResponseEntity&lt;&gt;(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Medicine created successfully&quot;,
+                        response
+                ),
+                HttpStatus.CREATED
+        );
+    }
+
+    @Operation(
+            summary = &quot;List or search medicines&quot;,
+            description = &quot;Returns all medicine records. Optional 'search' filters by partial &quot;
+                    + &quot;medicine name (case-insensitive) or exact medicine ID. A blank 'search' &quot;
+                    + &quot;returns 200 with an empty list.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Medicines retrieved successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            )
+    })
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_READ_ALL
+            + &quot;') or hasAuthority('&quot; + Permission.MEDICINE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;List&lt;MedicineResponse&gt;&gt;&gt; findAllMedicines(
+            @Parameter(description = &quot;Partial medicine name or exact medicine ID&quot;)
+            @RequestParam(required = false) String search
+    ) {
+
+<span class="fc" id="L99">        List&lt;MedicineResponse&gt; response =</span>
+<span class="fc" id="L100">                medicineService.findAllMedicines(search);</span>
+
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        String message = search != null</span>
+<span class="fc" id="L103">                ? &quot;Search results&quot;</span>
+<span class="fc" id="L104">                : &quot;Medicines retrieved successfully&quot;;</span>
+
+<span class="fc" id="L106">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        message,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Get medicine by ID&quot;,
+            description = &quot;Returns a medicine using its ID.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Medicine retrieved successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;404&quot;,
+                    description = &quot;Medicine not found&quot;
+            )
+    })
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_READ_ALL + &quot;') or hasAuthority('&quot;
+            + Permission.MEDICINE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;MedicineResponse&gt;&gt; findMedicineById(
+            @PathVariable Long id
+    ) {
+
+<span class="nc" id="L140">        MedicineResponse response =</span>
+<span class="nc" id="L141">                medicineService.findMedicineById(id);</span>
+
+<span class="nc" id="L143">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Medicine retrieved successfully&quot;,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Update medicine&quot;,
+            description = &quot;Updates medicine details without modifying stock quantity.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Medicine updated successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;400&quot;,
+                    description = &quot;Validation failed&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;404&quot;,
+                    description = &quot;Medicine not found&quot;
+            )
+    })
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;MedicineResponse&gt;&gt; updateMedicine(
+            @PathVariable Long id,
+            @Valid @RequestBody MedicineRequest request
+    ) {
+
+<span class="nc" id="L181">        MedicineResponse response =</span>
+<span class="nc" id="L182">                medicineService.updateMedicine(id, request);</span>
+
+<span class="nc" id="L184">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Medicine updated successfully&quot;,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Delete medicine&quot;,
+            description = &quot;Deletes a medicine using its ID.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Medicine deleted successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;404&quot;,
+                    description = &quot;Medicine not found&quot;
+            )
+    })
+    @DeleteMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_DELETE + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;Void&gt;&gt; deleteMedicine(
+            @PathVariable Long id
+    ) {
+
+<span class="nc" id="L217">        medicineService.deleteMedicine(id);</span>
+
+<span class="nc" id="L219">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Medicine deleted successfully&quot;
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Update medicine stock&quot;,
+            description = &quot;Updates medicine stock using a positive or negative stock delta.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Stock updated successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;400&quot;,
+                    description = &quot;Stock cannot become negative&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;404&quot;,
+                    description = &quot;Medicine not found&quot;
+            )
+    })
+    @PatchMapping(&quot;/{id}/stock&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;MedicineResponse&gt;&gt; updateStock(
+            @PathVariable Long id,
+            @Valid @RequestBody StockUpdateRequest request
+    ) {
+
+<span class="nc" id="L256">        MedicineResponse response =</span>
+<span class="nc" id="L257">                medicineService.updateStock(id, request);</span>
+
+<span class="nc" id="L259">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Stock updated successfully&quot;,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Get low-stock medicines&quot;,
+            description = &quot;Returns medicines where stock quantity is at or below the reorder level.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Low-stock medicines retrieved successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            )
+    })
+    @GetMapping(&quot;/low-stock&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;List&lt;MedicineResponse&gt;&gt;&gt; findLowStockMedicines() {
+
+<span class="nc" id="L286">        List&lt;MedicineResponse&gt; response =</span>
+<span class="nc" id="L287">                medicineService.findLowStockMedicines();</span>
+
+<span class="nc" id="L289">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Low-stock medicines retrieved successfully&quot;,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Get near-expiry medicines&quot;,
+            description = &quot;Returns medicines that are within the configured near-expiry period.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Near-expiry medicines retrieved successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            )
+    })
+    @GetMapping(&quot;/near-expiry&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;List&lt;MedicineResponse&gt;&gt;&gt; findNearExpiryMedicines() {
+
+<span class="nc" id="L316">        List&lt;MedicineResponse&gt; response =</span>
+<span class="nc" id="L317">                medicineService.findNearExpiryMedicines();</span>
+
+<span class="nc" id="L319">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Near-expiry medicines retrieved successfully&quot;,
+                        response
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Get available medicines&quot;,
+            description = &quot;Returns medicines that are not quarantined and are available for prescribing or dispensing.&quot;
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = &quot;200&quot;,
+                    description = &quot;Available medicines retrieved successfully&quot;
+            ),
+            @ApiResponse(
+                    responseCode = &quot;403&quot;,
+                    description = &quot;Access denied&quot;
+            )
+    })
+    @GetMapping(&quot;/available&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.MEDICINE_READ_ALL
+            + &quot;') or hasAuthority('&quot; + Permission.MEDICINE_READ + &quot;')&quot;)
+    public ResponseEntity&lt;com.onecare.backend.dto.ApiResponse&lt;List&lt;MedicineResponse&gt;&gt;&gt; findAvailableMedicines() {
+
+<span class="fc" id="L347">        List&lt;MedicineResponse&gt; response =</span>
+<span class="fc" id="L348">                medicineService.findAvailableMedicines();</span>
+
+<span class="fc" id="L350">        return ResponseEntity.ok(</span>
+                new com.onecare.backend.dto.ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Available medicines retrieved successfully&quot;,
+                        response
+                )
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

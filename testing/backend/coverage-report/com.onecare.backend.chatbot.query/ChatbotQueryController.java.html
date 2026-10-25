@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChatbotQueryController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.query</a> &gt; <span class="el_source">ChatbotQueryController.java</span></div><h1>ChatbotQueryController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.query;
+
+import com.onecare.backend.dto.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Map;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/** API-01: the PUBLIC chatbot endpoint. No login and no JWT (FR-043), so there is deliberately no @PreAuthorize here. */
+@RestController
+@RequestMapping(&quot;/api/chatbot&quot;)
+@Tag(name = &quot;Chatbot&quot;, description = &quot;Public: no login required. Rate limited to 20 requests per minute per IP.&quot;)
+public class ChatbotQueryController {
+    private final ChatQueryService service;
+
+<span class="fc" id="L20">    public ChatbotQueryController(ChatQueryService service) { this.service = service; }</span>
+
+    @Operation(summary = &quot;Ask the chatbot a question (English or Tamil)&quot;,
+            description = &quot;JSON {\&quot;query\&quot;: \&quot;...\&quot;}, UTF-8, at most 500 characters. Returns type ANSWER, REFUSAL, FALLBACK or CLINIC_FACT, &quot;
+                    + &quot;the language (EN or TA), the message and, for an ANSWER, the cited sources. No login needed.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;200&quot;, description = &quot;A reply of any type. A chatbot outage is also a 200 FALLBACK.&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing, empty, non-text, too long, or invalid characters&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;415&quot;, description = &quot;Content-Type is not application/json&quot;)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = &quot;429&quot;, description = &quot;More than 20 requests in a minute from this client. See the Retry-After header.&quot;)
+    @PostMapping(path = &quot;/query&quot;, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse&lt;ChatQueryResponse&gt; query(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L31">        return new ApiResponse&lt;&gt;(true, &quot;Chatbot query processed successfully&quot;, service.answer(body.get(&quot;query&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

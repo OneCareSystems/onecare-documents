@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SmtpHealthIndicator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.health</a> &gt; <span class="el_source">SmtpHealthIndicator.java</span></div><h1>SmtpHealthIndicator.java</h1><pre class="source lang-java linenums">package com.onecare.backend.health;
+
+import com.onecare.backend.config.HealthConfig;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.stereotype.Component;
+
+import java.util.Properties;
+
+/**
+ * SMTP reachability probe.
+ *
+ * &lt;p&gt;The SMTP gateway is NOT part of the startup gate: when it is unreachable
+ * this indicator reports {@code DEGRADED} (a custom status ordered below UP,
+ * see {@link com.onecare.backend.config.HealthConfig}) instead of DOWN. The
+ * health endpoint therefore still answers HTTP 200 and the container stays
+ * healthy in docker compose, while the body makes the degradation visible.
+ * Core clinic flows (appointments, billing, prescriptions) do not depend on
+ * outbound email, so they keep working.
+ *
+ * &lt;p&gt;Only MySQL and Redis gate startup / container health.
+ *
+ * &lt;p&gt;The probe opens and closes a real SMTP connection. It never sends mail
+ * and never logs credentials — only the exception class and the host.
+ */
+@Component(&quot;smtp&quot;)
+public class SmtpHealthIndicator implements HealthIndicator {
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(SmtpHealthIndicator.class);</span>
+
+    private final ObjectProvider&lt;JavaMailSender&gt; javaMailSender;
+    private final long connectTimeoutMillis;
+
+    public SmtpHealthIndicator(
+            ObjectProvider&lt;JavaMailSender&gt; javaMailSender,
+<span class="fc" id="L45">            @Value(&quot;${management.health.smtp.connect-timeout-ms:3000}&quot;) long connectTimeoutMillis) {</span>
+<span class="fc" id="L46">        this.javaMailSender = javaMailSender;</span>
+<span class="fc" id="L47">        this.connectTimeoutMillis = connectTimeoutMillis;</span>
+<span class="fc" id="L48">    }</span>
+
+    @Override
+    public Health health() {
+<span class="fc" id="L52">        JavaMailSender sender = javaMailSender.getIfAvailable();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (sender == null) {</span>
+            // No mail sender bean at all (spring.mail.host unset) — not a crash,
+            // password-reset emails simply cannot go out until it is configured.
+<span class="fc" id="L56">            return Health.status(HealthConfig.DEGRADED)</span>
+<span class="fc" id="L57">                    .withDetail(&quot;reason&quot;, &quot;SMTP is not configured (spring.mail.host is missing)&quot;)</span>
+<span class="fc" id="L58">                    .build();</span>
+        }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!(sender instanceof JavaMailSenderImpl impl)) {</span>
+            // Unexpected sender type (e.g. a test mock); cannot probe it.
+<span class="fc" id="L62">            return Health.up()</span>
+<span class="fc" id="L63">                    .withDetail(&quot;reason&quot;, &quot;SMTP sender is not probeable, skipping reachability check&quot;)</span>
+<span class="fc" id="L64">                    .build();</span>
+        }
+
+<span class="fc" id="L67">        String host = impl.getHost();</span>
+<span class="fc" id="L68">        int port = impl.getPort();</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">        if (host == null || host.isBlank()) {</span>
+<span class="fc" id="L70">            return Health.status(HealthConfig.DEGRADED)</span>
+<span class="fc" id="L71">                    .withDetail(&quot;reason&quot;, &quot;SMTP is not configured (spring.mail.host is empty)&quot;)</span>
+<span class="fc" id="L72">                    .build();</span>
+        }
+
+        try {
+<span class="nc" id="L76">            probe(host, port, impl.getUsername(), impl.getPassword(), impl.getJavaMailProperties());</span>
+<span class="nc" id="L77">            return Health.up()</span>
+<span class="nc" id="L78">                    .withDetail(&quot;host&quot;, host)</span>
+<span class="nc" id="L79">                    .withDetail(&quot;port&quot;, port)</span>
+<span class="nc" id="L80">                    .build();</span>
+<span class="fc" id="L81">        } catch (Exception e) {</span>
+            // Sanitized on purpose: class name + host only. The message of a
+            // MailSendException can embed server responses; never the password.
+<span class="fc" id="L84">            log.warn(&quot;SMTP health probe failed | host={} | error={}&quot;, host, e.getClass().getSimpleName());</span>
+<span class="fc" id="L85">            return Health.status(HealthConfig.DEGRADED)</span>
+<span class="fc" id="L86">                    .withDetail(&quot;host&quot;, host)</span>
+<span class="fc" id="L87">                    .withDetail(&quot;port&quot;, port)</span>
+<span class="fc" id="L88">                    .withDetail(&quot;reason&quot;, &quot;SMTP gateway unreachable&quot;)</span>
+<span class="fc" id="L89">                    .withDetail(&quot;error&quot;, e.getClass().getSimpleName())</span>
+<span class="fc" id="L90">                    .build();</span>
+        }
+    }
+
+    /** Opens the SMTP conversation (CONNECT/EHLO/AUTH) then quits. No mail is sent. */
+    private void probe(String host, int port, String username, String password, Properties configuredProperties) throws MessagingException {
+<span class="fc" id="L96">        Properties props = new Properties();</span>
+<span class="fc" id="L97">        props.putAll(configuredProperties);</span>
+<span class="fc" id="L98">        props.setProperty(&quot;mail.smtp.connectiontimeout&quot;, String.valueOf(connectTimeoutMillis));</span>
+<span class="fc" id="L99">        props.setProperty(&quot;mail.smtp.timeout&quot;, String.valueOf(connectTimeoutMillis));</span>
+<span class="fc" id="L100">        props.setProperty(&quot;mail.smtp.writetimeout&quot;, String.valueOf(connectTimeoutMillis));</span>
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        props.setProperty(&quot;mail.smtp.auth&quot;, String.valueOf(username != null &amp;&amp; !username.isBlank()));</span>
+
+<span class="fc" id="L103">        Transport transport = Session.getInstance(props).getTransport(&quot;smtp&quot;);</span>
+        try {
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">            if (username != null &amp;&amp; !username.isBlank()) {</span>
+<span class="nc" id="L106">                transport.connect(host, port, username, password);</span>
+            } else {
+<span class="nc" id="L108">                transport.connect(host, port, null, null);</span>
+            }
+        } finally {
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            if (transport.isConnected()) {</span>
+<span class="nc" id="L112">                transport.close();</span>
+            }
+        }
+<span class="nc" id="L115">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

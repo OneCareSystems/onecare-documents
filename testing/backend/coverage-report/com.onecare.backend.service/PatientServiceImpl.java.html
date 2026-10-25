@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PatientServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">PatientServiceImpl.java</span></div><h1>PatientServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.PatientCreateRequest;
+import com.onecare.backend.dto.request.PatientUpdateRequest;
+import com.onecare.backend.dto.response.PatientResponse;
+import com.onecare.backend.dto.response.AppointmentResponse;
+import com.onecare.backend.dto.response.PatientHistoryPrescriptionResponse;
+import com.onecare.backend.dto.response.PatientHistoryResponse;
+import com.onecare.backend.entity.Appointment;
+import com.onecare.backend.entity.Patient;
+import com.onecare.backend.entity.Prescription;
+import com.onecare.backend.enums.AppointmentStatus;
+import com.onecare.backend.enums.Gender;
+import com.onecare.backend.enums.PrescriptionStatus;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.AppointmentRepository;
+import com.onecare.backend.repository.PatientRepository;
+import com.onecare.backend.repository.PrescriptionRepository;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.security.SecurityUtil;
+import com.onecare.backend.util.PhoneNumberUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Optional;
+
+@Service
+@Transactional
+
+public class PatientServiceImpl implements PatientService {
+<span class="fc" id="L39">     private static final Logger log = LoggerFactory.getLogger(PatientServiceImpl.class);</span>
+
+    private final PatientRepository patientRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final PrescriptionRepository prescriptionRepository;
+
+    public PatientServiceImpl(PatientRepository patientRepository,
+                              AppointmentRepository appointmentRepository,
+<span class="fc" id="L47">                              PrescriptionRepository prescriptionRepository) {</span>
+<span class="fc" id="L48">        this.patientRepository = patientRepository;</span>
+<span class="fc" id="L49">        this.appointmentRepository = appointmentRepository;</span>
+<span class="fc" id="L50">        this.prescriptionRepository = prescriptionRepository;</span>
+<span class="fc" id="L51">    }</span>
+
+     @Override
+    @Audited(action = &quot;PATIENT_CREATE&quot;, module = &quot;PATIENT&quot;)
+    public PatientResponse createPatient(PatientCreateRequest request) {
+
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        String rawContactNo = request.contactNo() != null ? request.contactNo().trim() : &quot;&quot;;</span>
+<span class="fc" id="L58">        String normalizedContactNo = PhoneNumberUtil.canonicalPhone(rawContactNo);</span>
+
+        // AC3: duplicate-suspect check — informational only, never blocks creation.
+        // Requires both matching full name AND contact number, where the contact
+        // number matches in any stored format (canonical, legacy spaced, as typed).
+<span class="fc" id="L63">        boolean duplicateSuspected = patientRepository.existsByFullNameIgnoreCaseAndContactNoIn(</span>
+<span class="fc" id="L64">                request.full_name(), PhoneNumberUtil.lookupVariants(rawContactNo));</span>
+
+<span class="fc" id="L66">        Patient patient = new Patient();</span>
+<span class="fc" id="L67">        patient.setFullName(request.full_name());</span>
+<span class="fc" id="L68">        patient.setDateOfBirth(request.dateOfBirth());</span>
+<span class="fc" id="L69">        patient.setAddress(request.address());</span>
+<span class="fc" id="L70">        patient.setContactNo(normalizedContactNo);</span>
+<span class="fc" id="L71">        patient.setEmail(request.email());</span>
+<span class="fc" id="L72">        patient.setBloodGroup(request.bloodGroup());</span>
+<span class="fc" id="L73">        patient.setGender(request.gender());</span>
+<span class="fc" id="L74">        patient.setIsActive(true);</span>
+        // patientId intentionally never set here — @GeneratedValue owns it entirely;
+        // the DTO has no patientId field, so a client-supplied one has nowhere to bind
+
+<span class="fc" id="L78">        Patient saved = patientRepository.save(patient);</span>
+
+<span class="fc" id="L80">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L81">        log.info(</span>
+                &quot;Patient registered | patientId={} | performedBy={} | duplicateSuspected={}&quot;,
+<span class="fc" id="L83">                saved.getPatientId(), performedBy, duplicateSuspected</span>
+        );
+
+<span class="fc" id="L86">        return PatientResponse.from(saved, duplicateSuspected);</span>
+    }
+
+    @Override
+    public Patient findOrCreateForPublicBooking(String fullName, String rawContactNo, LocalDate dateOfBirth, String gender) {
+
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        String trimmedContactNo = rawContactNo != null ? rawContactNo.trim() : &quot;&quot;;</span>
+<span class="fc" id="L93">        String normalizedContactNo = PhoneNumberUtil.canonicalPhone(trimmedContactNo);</span>
+
+<span class="fc" id="L95">        Optional&lt;Patient&gt; existingPatient = patientRepository</span>
+<span class="fc" id="L96">                .findFirstByFullNameIgnoreCaseAndContactNo(fullName, normalizedContactNo);</span>
+<span class="fc bfc" id="L97" title="All 4 branches covered.">        if (existingPatient.isEmpty() &amp;&amp; !normalizedContactNo.equals(trimmedContactNo)) {</span>
+<span class="fc" id="L98">            existingPatient = patientRepository</span>
+<span class="fc" id="L99">                    .findFirstByFullNameIgnoreCaseAndContactNo(fullName, trimmedContactNo);</span>
+        }
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        if (existingPatient.isEmpty() &amp;&amp; PhoneNumberUtil.isValidSriLankanPhone(trimmedContactNo)) {</span>
+<span class="fc" id="L102">            existingPatient = patientRepository.findByFullNameIgnoreCase(fullName).stream()</span>
+<span class="fc" id="L103">                    .filter(patient -&gt; PhoneNumberUtil.isValidSriLankanPhone(patient.getContactNo()))</span>
+<span class="fc" id="L104">                    .filter(patient -&gt; normalizedContactNo.equals(</span>
+<span class="fc" id="L105">                            PhoneNumberUtil.normalizeSriLankanPhone(patient.getContactNo())))</span>
+<span class="fc" id="L106">                    .findFirst();</span>
+        }
+<span class="fc" id="L108">        Patient existing = existingPatient.orElse(null);</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc" id="L111">            log.info(&quot;Public booking matched existing patient | patientId={} | performedBy=PUBLIC&quot;,</span>
+<span class="fc" id="L112">                    existing.getPatientId());</span>
+<span class="fc" id="L113">            return existing;</span>
+        }
+
+<span class="fc" id="L116">        Patient patient = new Patient();</span>
+<span class="fc" id="L117">        patient.setFullName(fullName);</span>
+<span class="fc" id="L118">        patient.setDateOfBirth(dateOfBirth);</span>
+<span class="fc" id="L119">        patient.setContactNo(normalizedContactNo);</span>
+<span class="fc" id="L120">        patient.setGender(Gender.valueOf(gender.trim().toUpperCase()));</span>
+<span class="fc" id="L121">        patient.setIsActive(true);</span>
+
+<span class="fc" id="L123">        Patient saved = patientRepository.save(patient);</span>
+
+<span class="fc" id="L125">        log.info(&quot;Public booking registered minimal patient | patientId={} | performedBy=PUBLIC&quot;,</span>
+<span class="fc" id="L126">                saved.getPatientId());</span>
+<span class="fc" id="L127">        return saved;</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;PatientResponse&gt; findAllPatients(String search, Pageable pageable) {
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (search == null) {</span>
+<span class="fc" id="L135">        return patientRepository.findAll(pageable)</span>
+<span class="fc" id="L136">                .map(PatientResponse::from)</span>
+<span class="fc" id="L137">                .getContent();</span>
+    }
+
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (search.isBlank()) {</span>
+<span class="fc" id="L141">            return List.of(); // AC/negative test: empty search -&gt; 200 []</span>
+        }
+
+        // name (partial), contact number (exact, in any stored format) and patient ID
+        // (exact) in one DB query, so page/size/sort apply to the filtered set
+<span class="fc" id="L146">        return patientRepository.search(search, PhoneNumberUtil.lookupVariants(search), pageable).stream()</span>
+<span class="fc" id="L147">                .map(PatientResponse::from)</span>
+<span class="fc" id="L148">                .toList();</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PatientResponse findPatientById(Long id) {
+<span class="fc" id="L154">        return PatientResponse.from(findPatientByIdInternal(id));</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;PatientResponse&gt; searchPatients(String search) {
+
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">        if (search == null || search.isBlank()) {</span>
+<span class="nc" id="L162">            return List.of(); // AC/negative test: empty search -&gt; 200 []</span>
+        }
+
+<span class="fc" id="L165">        String query = search.trim();</span>
+<span class="fc" id="L166">        List&lt;Patient&gt; results = new ArrayList&lt;&gt;();</span>
+
+        // Exact patient ID match, only if the search string is fully numeric
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (query.chars().allMatch(Character::isDigit)) {</span>
+<span class="fc" id="L170">            patientRepository.findById(Long.parseLong(query))</span>
+<span class="fc" id="L171">                    .filter(Patient::getIsActive)</span>
+<span class="fc" id="L172">                    .ifPresent(results::add);</span>
+        }
+
+        // Contact number match in any stored format in one query: canonical
+        // (+94771234567), legacy spaced (+94 771 234 567), as typed, and local
+        // 10-digit (0XXXXXXXXX)
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        for (Patient p : patientRepository.findByContactNoInAndIsActiveTrue(</span>
+<span class="fc" id="L179">                PhoneNumberUtil.lookupVariants(query))) {</span>
+<span class="fc" id="L180">            addIfAbsent(results, p);</span>
+<span class="fc" id="L181">        }</span>
+
+        // Partial name match (first + last combined)
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        for (Patient p : patientRepository.searchByName(query)) {</span>
+<span class="fc" id="L185">            addIfAbsent(results, p);</span>
+<span class="fc" id="L186">        }</span>
+
+<span class="fc" id="L188">        return results.stream().map(PatientResponse::from).toList();</span>
+    }
+
+    private void addIfAbsent(List&lt;Patient&gt; results, Patient candidate) {
+<span class="fc" id="L192">        boolean alreadyPresent = results.stream()</span>
+<span class="fc" id="L193">                .anyMatch(p -&gt; p.getPatientId().equals(candidate.getPatientId()));</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!alreadyPresent) {</span>
+<span class="fc" id="L195">            results.add(candidate);</span>
+        }
+<span class="fc" id="L197">    }</span>
+
+    @Override
+    @Transactional(readOnly = true)
+    public PatientHistoryResponse getPatientHistory(Long patientId) {
+<span class="fc" id="L202">        Patient patient = findPatientByIdInternal(patientId);</span>
+<span class="fc" id="L203">        LocalDate today = LocalDate.now();</span>
+<span class="fc" id="L204">        boolean includeClinicalNotes = SecurityUtil.hasPermission(Permission.APPOINTMENT_READ_CLINICAL_NOTES);</span>
+
+<span class="fc" id="L206">        List&lt;AppointmentResponse&gt; previousAppointments = appointmentRepository</span>
+<span class="fc" id="L207">                .findByPatient_PatientIdOrderByAppointmentDateDescTimeSlotDesc(patient.getPatientId())</span>
+<span class="fc" id="L208">                .stream()</span>
+<span class="fc" id="L209">                .filter(appointment -&gt; isPreviousEncounter(appointment, today))</span>
+<span class="fc" id="L210">                .map(appointment -&gt; AppointmentResponse.from(appointment, includeClinicalNotes))</span>
+<span class="fc" id="L211">                .toList();</span>
+
+<span class="fc" id="L213">        List&lt;PatientHistoryPrescriptionResponse&gt; previousPrescriptions = prescriptionRepository</span>
+<span class="fc" id="L214">                .findByPatient_PatientId(patient.getPatientId())</span>
+<span class="fc" id="L215">                .stream()</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                .filter(prescription -&gt; prescription.getDate().isBefore(today)</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                        || prescription.getStatus() != PrescriptionStatus.ISSUED)</span>
+<span class="fc" id="L218">                .sorted(Comparator.comparing(Prescription::getDate).reversed())</span>
+<span class="fc" id="L219">                .map(prescription -&gt; PatientHistoryPrescriptionResponse.from(</span>
+                        prescription, includeClinicalNotes))
+<span class="fc" id="L221">                .toList();</span>
+
+<span class="fc" id="L223">        return new PatientHistoryResponse(</span>
+<span class="fc" id="L224">                PatientResponse.from(patient), previousAppointments, previousPrescriptions);</span>
+    }
+
+    private static boolean isPreviousEncounter(Appointment appointment, LocalDate today) {
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        return appointment.getAppointmentDate().isBefore(today)</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                || appointment.getStatus() == AppointmentStatus.COMPLETED</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">                || appointment.getStatus() == AppointmentStatus.CANCELLED;</span>
+    }
+
+    @Override
+    
+    public PatientResponse updatePatient(Long id, PatientUpdateRequest request) {
+
+<span class="nc" id="L237">        Patient patient = findPatientByIdInternal(id);</span>
+
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (request.full_name() != null) patient.setFullName(request.full_name());</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (request.address() != null) patient.setAddress(request.address());</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        if (request.contactNo() != null) {</span>
+<span class="nc" id="L242">            patient.setContactNo(PhoneNumberUtil.canonicalPhone(request.contactNo()));</span>
+        }
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        if (request.email() != null) patient.setEmail(request.email());</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (request.bloodGroup() != null) patient.setBloodGroup(request.bloodGroup());</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (request.gender() != null) patient.setGender(request.gender());</span>
+
+<span class="nc" id="L248">        Patient saved = patientRepository.save(patient);</span>
+
+<span class="nc" id="L250">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="nc" id="L251">        log.info(&quot;Patient {} updated by {}&quot;, saved.getPatientId(), performedBy);</span>
+
+<span class="nc" id="L253">        return PatientResponse.from(saved);</span>
+    }
+
+    @Override
+    @Audited(action = &quot;PATIENT_DEACTIVATE&quot;, module = &quot;PATIENT&quot;)
+    public void deactivatePatient(Long id) {
+
+<span class="fc" id="L260">        Patient patient = findPatientByIdInternal(id);</span>
+<span class="fc" id="L261">        patient.setIsActive(false); // soft delete only — row is never removed</span>
+
+<span class="fc" id="L263">        patientRepository.save(patient);</span>
+
+<span class="fc" id="L265">        String performedBy = SecurityUtil.getCurrentUsername().orElse(&quot;SYSTEM&quot;);</span>
+<span class="fc" id="L266">        log.info(&quot;Patient {} deactivated by {}&quot;, patient.getPatientId(), performedBy);</span>
+<span class="fc" id="L267">    }</span>
+
+    private Patient findPatientByIdInternal(Long id) {
+<span class="fc" id="L270">        return patientRepository.findById(id)</span>
+<span class="fc" id="L271">                .orElseThrow(() -&gt;</span>
+<span class="fc" id="L272">                        new ResourceNotFoundException(&quot;Patient not found with id: &quot; + id));</span>
+    }
+}
+
+
+    
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

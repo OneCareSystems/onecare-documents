@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.exception</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">
+package com.onecare.backend.exception;
+
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.onecare.backend.chatbot.ChatMessages;
+import com.onecare.backend.chatbot.exception.InvalidInputException;
+import com.onecare.backend.chatbot.exception.RateLimitExceededException;
+import com.onecare.backend.dto.ApiResponse;
+
+import io.swagger.v3.oas.annotations.Hidden;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@ControllerAdvice
+@Hidden
+<span class="fc" id="L37">public class GlobalExceptionHandler {</span>
+
+<span class="fc" id="L39">    private static final Logger log =</span>
+<span class="fc" id="L40">            LoggerFactory.getLogger(GlobalExceptionHandler.class);</span>
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleNotFound(
+            ResourceNotFoundException exception) {
+
+<span class="fc" id="L46">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L47">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="fc" id="L49">        return new ResponseEntity&lt;&gt;(response, HttpStatus.NOT_FOUND);</span>
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleValidationException(
+            MethodArgumentNotValidException ex) {
+
+<span class="fc" id="L56">        List&lt;Map&lt;String, String&gt;&gt; errors = ex.getBindingResult()</span>
+<span class="fc" id="L57">                .getFieldErrors()</span>
+<span class="fc" id="L58">                .stream()</span>
+<span class="fc" id="L59">                .map(error -&gt; {</span>
+<span class="fc" id="L60">                    Map&lt;String, String&gt; fieldError = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L62">                    fieldError.put(&quot;field&quot;, error.getField());</span>
+<span class="fc" id="L63">                    fieldError.put(&quot;message&quot;, error.getDefaultMessage());</span>
+
+<span class="fc" id="L65">                    return fieldError;</span>
+                })
+<span class="fc" id="L67">                .toList();</span>
+
+<span class="fc" id="L69">        return ResponseEntity.badRequest()</span>
+<span class="fc" id="L70">                .body(new ApiResponse&lt;&gt;(</span>
+                        false,
+                        &quot;Request validation failed&quot;,
+                        errors
+                ));
+    }
+
+    @ExceptionHandler(InvalidResetTokenException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleInvalidResetToken(
+            InvalidResetTokenException exception) {
+
+<span class="fc" id="L81">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L82">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="fc" id="L84">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(EmailSendException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleEmailSendFailure(
+            EmailSendException exception) {
+
+<span class="fc" id="L91">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+                &quot;Unable to send email at this time. Please try again later.&quot;
+        );
+
+<span class="fc" id="L96">        return new ResponseEntity&lt;&gt;(</span>
+                response,
+                HttpStatus.SERVICE_UNAVAILABLE
+        );
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleBadCredentials(
+            BadCredentialsException exception) {
+
+<span class="fc" id="L106">        ApiResponse&lt;?&gt; response =</span>
+                new ApiResponse&lt;&gt;(false, &quot;Invalid username or password&quot;);
+
+<span class="fc" id="L109">        return new ResponseEntity&lt;&gt;(response, HttpStatus.UNAUTHORIZED);</span>
+    }
+
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleAccountLocked(
+            AccountLockedException exception) {
+
+<span class="nc" id="L116">        ApiResponse&lt;?&gt; response =</span>
+<span class="nc" id="L117">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="nc" id="L119">        return new ResponseEntity&lt;&gt;(response, HttpStatus.LOCKED);</span>
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleAccessDenied(
+            AccessDeniedException exception) {
+
+<span class="fc" id="L126">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+                &quot;Access denied&quot;
+        );
+
+<span class="fc" id="L131">        return new ResponseEntity&lt;&gt;(response, HttpStatus.FORBIDDEN);</span>
+    }
+
+    @ExceptionHandler(InvalidAppointmentStatusException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleInvalidAppointmentStatus(
+            InvalidAppointmentStatusException exception) {
+
+<span class="nc" id="L138">        ApiResponse&lt;?&gt; response =</span>
+<span class="nc" id="L139">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="nc" id="L141">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(SlotConflictException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleSlotConflict(
+            SlotConflictException exception) {
+
+<span class="fc" id="L148">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+<span class="fc" id="L150">                exception.getMessage(),</span>
+                new com.onecare.backend.dto.response.SlotConflictResponse(
+<span class="fc" id="L152">                        exception.getMessage(),</span>
+<span class="fc" id="L153">                        exception.getRequestedSlot(),</span>
+<span class="fc" id="L154">                        exception.getAlternativeSlots()));</span>
+<span class="fc" id="L155">        return new ResponseEntity&lt;&gt;(response, HttpStatus.CONFLICT);</span>
+    }
+
+    /** Overlapping doctor-schedule slots (UC4 alt flow): 400, conflicting ranges in data. */
+    @ExceptionHandler(com.onecare.backend.exception.TimeSlotConflictException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleTimeSlotConflict(
+            com.onecare.backend.exception.TimeSlotConflictException exception) {
+<span class="fc" id="L162">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(false, exception.getMessage(), exception.getConflictingSlots());</span>
+<span class="fc" id="L163">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    /** BR004-BR006 violation on a permission change: 422, nothing persisted (AC5). */
+    @ExceptionHandler(com.onecare.backend.exception.PermissionRuleViolationException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handlePermissionRuleViolation(
+            com.onecare.backend.exception.PermissionRuleViolationException exception) {
+<span class="fc" id="L170">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+<span class="fc" id="L171">        return new ResponseEntity&lt;&gt;(response, HttpStatus.UNPROCESSABLE_ENTITY);</span>
+    }
+
+    /** Report date range above the allowed threshold (UC24 alt flow, AC3): 422, nothing aggregated. */
+    @ExceptionHandler(DateRangeTooLargeException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleDateRangeTooLarge(
+            DateRangeTooLargeException exception) {
+<span class="fc" id="L178">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+<span class="fc" id="L179">        return new ResponseEntity&lt;&gt;(response, HttpStatus.UNPROCESSABLE_ENTITY);</span>
+    }
+
+    /** Restore without confirm=true (UC5, AC4): 400, no data touched. */
+    @ExceptionHandler(com.onecare.backend.exception.RestoreConfirmationRequiredException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleRestoreConfirmationRequired(
+            com.onecare.backend.exception.RestoreConfirmationRequiredException exception) {
+<span class="fc" id="L186">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+<span class="fc" id="L187">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException exception) {
+<span class="fc" id="L193">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+<span class="fc" id="L194">        return new ResponseEntity&lt;&gt;(response, HttpStatus.METHOD_NOT_ALLOWED);</span>
+    }
+
+    @ExceptionHandler(InvalidStockException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleInvalidStock(
+            InvalidStockException exception) {
+
+<span class="nc" id="L201">        ApiResponse&lt;?&gt; response =</span>
+<span class="nc" id="L202">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="nc" id="L204">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(DuplicateUserException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleDuplicateUser(
+            DuplicateUserException exception) {
+
+<span class="fc" id="L211">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L212">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="fc" id="L214">        return new ResponseEntity&lt;&gt;(response, HttpStatus.CONFLICT);</span>
+    }
+
+    @ExceptionHandler(StockShortfallException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleStockShortfall(StockShortfallException exception) {
+<span class="fc" id="L219">        return ResponseEntity.status(HttpStatus.CONFLICT)</span>
+<span class="fc" id="L220">                .body(new ApiResponse&lt;&gt;(false, exception.getMessage(), exception.getPreview()));</span>
+    }
+
+    @ExceptionHandler({org.springframework.dao.PessimisticLockingFailureException.class,
+            jakarta.persistence.LockTimeoutException.class, jakarta.persistence.PessimisticLockException.class})
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleDispensingLock(Exception exception) {
+<span class="nc" id="L226">        return ResponseEntity.status(HttpStatus.CONFLICT)</span>
+<span class="nc" id="L227">                .body(new ApiResponse&lt;&gt;(false, &quot;Concurrent update. Please refresh and retry.&quot;));</span>
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleConflict(
+            ConflictException exception) {
+
+<span class="fc" id="L234">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L235">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="fc" id="L237">        return new ResponseEntity&lt;&gt;(response, HttpStatus.CONFLICT);</span>
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleOptimisticLock(
+            OptimisticLockingFailureException exception) {
+
+<span class="nc" id="L244">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+                &quot;The record was modified by another request. Please retry.&quot;
+        );
+
+<span class="nc" id="L249">        return new ResponseEntity&lt;&gt;(response, HttpStatus.CONFLICT);</span>
+    }
+
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleBusinessRule(
+            BusinessRuleException exception) {
+
+<span class="fc" id="L256">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L257">                new ApiResponse&lt;&gt;(false, exception.getMessage());</span>
+
+<span class="fc" id="L259">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception) {
+
+<span class="fc" id="L266">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+<span class="fc" id="L268">                &quot;Invalid value '&quot; + exception.getValue()</span>
+<span class="fc" id="L269">                        + &quot;' for parameter '&quot; + exception.getName() + &quot;'&quot;</span>
+        );
+
+<span class="fc" id="L272">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleMissingParameter(
+            MissingServletRequestParameterException exception) {
+
+<span class="fc" id="L279">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+<span class="fc" id="L281">                &quot;Missing required parameter: '&quot; + exception.getParameterName() + &quot;'&quot;</span>
+        );
+
+<span class="fc" id="L284">        return new ResponseEntity&lt;&gt;(response, HttpStatus.BAD_REQUEST);</span>
+    }
+
+    
+    @ExceptionHandler(InvalidInputException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleInvalidInput(
+            InvalidInputException ex) {
+
+<span class="fc" id="L292">        ApiResponse&lt;?&gt; response =</span>
+<span class="fc" id="L293">                new ApiResponse&lt;&gt;(false, ex.getMessage());</span>
+
+<span class="fc" id="L295">        return ResponseEntity</span>
+<span class="fc" id="L296">                .status(HttpStatus.BAD_REQUEST)</span>
+<span class="fc" id="L297">                .body(response);</span>
+    }
+
+    
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleRateLimit(
+            RateLimitExceededException ex) {
+
+<span class="fc" id="L305">        ApiResponse&lt;?&gt; response = new ApiResponse&lt;&gt;(</span>
+                false,
+                ChatMessages.RATE_LIMITED
+        );
+
+<span class="fc" id="L310">        return ResponseEntity</span>
+<span class="fc" id="L311">                .status(HttpStatus.TOO_MANY_REQUESTS)</span>
+<span class="fc" id="L312">                .header(</span>
+                        HttpHeaders.RETRY_AFTER,
+<span class="fc" id="L314">                        String.valueOf(ex.getRetryAfterSeconds())</span>
+                )
+<span class="fc" id="L316">                .body(response);</span>
+    }
+
+    
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleUnreadableBody(
+            HttpMessageNotReadableException ex) {
+
+<span class="fc" id="L324">        String message = &quot;Malformed or unreadable request body&quot;;</span>
+
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (ex.getCause() instanceof InvalidFormatException ife</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">                &amp;&amp; ife.getTargetType() != null</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">                &amp;&amp; ife.getTargetType().isEnum()) {</span>
+
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">            String field = ife.getPath().isEmpty()</span>
+<span class="nc" id="L331">                    ? &quot;value&quot;</span>
+<span class="fc" id="L332">                    : ife.getPath()</span>
+<span class="fc" id="L333">                            .get(ife.getPath().size() - 1)</span>
+<span class="fc" id="L334">                            .getFieldName();</span>
+
+<span class="fc" id="L336">            message = &quot;Invalid value '&quot; + ife.getValue()</span>
+                    + &quot;' for field '&quot; + field
+                    + &quot;'. Allowed values: &quot;
+<span class="fc" id="L339">                    + Arrays.toString(</span>
+<span class="fc" id="L340">                            ife.getTargetType().getEnumConstants()</span>
+                    );
+        }
+
+<span class="fc" id="L344">        return ResponseEntity</span>
+<span class="fc" id="L345">                .status(HttpStatus.BAD_REQUEST)</span>
+<span class="fc" id="L346">                .body(new ApiResponse&lt;&gt;(false, message));</span>
+
+    }
+
+    
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleMediaType(
+            HttpMediaTypeNotSupportedException ex) {
+
+<span class="fc" id="L355">        String message =</span>
+                &quot;Unsupported Content-Type. Use the content type required by this endpoint.&quot;;
+
+<span class="fc" id="L358">        ApiResponse&lt;?&gt; response =</span>
+                new ApiResponse&lt;&gt;(false, message);
+
+<span class="fc" id="L361">        return ResponseEntity</span>
+<span class="fc" id="L362">                .status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)</span>
+<span class="fc" id="L363">                .body(response);</span>
+    }
+
+   
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleUploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+<span class="fc" id="L369">        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)</span>
+<span class="fc" id="L370">                .body(new ApiResponse&lt;&gt;(false, &quot;The uploaded file exceeds the allowed size.&quot;));</span>
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; handleGeneral(Exception ex) {
+
+<span class="fc" id="L376">        log.error(&quot;Unhandled exception handling request&quot;, ex);</span>
+
+<span class="fc" id="L378">        ApiResponse&lt;?&gt; response =</span>
+                new ApiResponse&lt;&gt;(false, &quot;Internal Server Error&quot;);
+
+<span class="fc" id="L381">        return new ResponseEntity&lt;&gt;(</span>
+                response,
+                HttpStatus.INTERNAL_SERVER_ERROR
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

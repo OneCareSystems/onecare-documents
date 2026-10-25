@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrescriptionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.controller</a> &gt; <span class="el_source">PrescriptionController.java</span></div><h1>PrescriptionController.java</h1><pre class="source lang-java linenums">package com.onecare.backend.controller;
+
+import com.onecare.backend.dto.ApiResponse;
+import com.onecare.backend.dto.request.CreatePrescriptionRequest;
+import com.onecare.backend.dto.request.UpdatePrescriptionRequest;
+import com.onecare.backend.dto.response.PrescriptionDetailResponse;
+import com.onecare.backend.dto.response.ExternalDispensingResponse;
+import com.onecare.backend.dto.response.PrescriptionResponse;
+import com.onecare.backend.security.Permission;
+import com.onecare.backend.service.PrescriptionService;
+import com.onecare.backend.service.ExternalDispensingService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@Tag(name = &quot;Prescriptions&quot;, description = &quot;Prescription &amp; prescription item APIs&quot;)
+@RestController
+@RequestMapping(&quot;/api/prescriptions&quot;)
+public class PrescriptionController {
+
+    private final com.onecare.backend.service.PrescriptionDispensingService dispensingService;
+    private final PrescriptionService prescriptionService;
+    private final ExternalDispensingService externalDispensingService;      
+    
+    public PrescriptionController(
+                    PrescriptionService prescriptionService,
+                    ExternalDispensingService externalDispensingService,
+<span class="fc" id="L35">                    com.onecare.backend.service.PrescriptionDispensingService dispensingService) {</span>
+<span class="fc" id="L36">            this.dispensingService = dispensingService;</span>
+
+<span class="fc" id="L38">            this.prescriptionService = prescriptionService;</span>
+<span class="fc" id="L39">            this.externalDispensingService = externalDispensingService;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Operation(
+            summary = &quot;Create a prescription&quot;,
+            description = &quot;Creates a prescription with one or more items in a single transaction. &quot;
+                    + &quot;The doctor is always the authenticated user (persisted role must be DOCTOR); &quot;
+                    + &quot;the patient must exist and be active; the appointment is required and must &quot;
+                    + &quot;exist. Every item needs an itemType: IN_HOUSE items reference a medicineId &quot;
+                    + &quot;that must exist, be active (not quarantined) and not expired; EXTERNAL_PURCHASE &quot;
+                    + &quot;items carry a free-text medicineName instead (medicineId must be null) and are &quot;
+                    + &quot;never stock-checked, dispensed or invoiced. &quot;
+                    + &quot;If any item is invalid the entire request is rejected and no rows are written. &quot;
+                    + &quot;Status is always set server-side to ISSUED — clients cannot supply a status. &quot;
+                    + &quot;Clinical notes are not part of a prescription; they are stored on the &quot;
+                    + &quot;appointment. &quot;
+                    + &quot;Returns 201 Created; 400 for validation/business-rule failures; 403 without &quot;
+                    + &quot;PRESCRIPTION_CREATE (Doctor only); 404 for an unknown patient/appointment.&quot;)
+    @PostMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; createPrescription(
+            @Valid @RequestBody CreatePrescriptionRequest request) {
+
+<span class="fc" id="L62">        PrescriptionResponse response = prescriptionService.createPrescription(request);</span>
+<span class="fc" id="L63">        return ResponseEntity.status(HttpStatus.CREATED)</span>
+<span class="fc" id="L64">                .body(new ApiResponse&lt;&gt;(true, &quot;Prescription created successfully&quot;, response));</span>
+    }
+
+    @Operation(
+            summary = &quot;List prescriptions&quot;,
+            description = &quot;Returns all prescriptions, optionally filtered by status &quot;
+                    + &quot;(ISSUED, PARTIALLY_DISPENSED, DISPENSED, DISPENSED_EXTERNAL or CANCELLED; invalid value returns 400). &quot;
+                    + &quot;Returns 403 without PRESCRIPTION_READ_ALL.&quot;)
+    @GetMapping
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findAllPrescriptions(
+            @Parameter(description = &quot;Optional status filter: ISSUED, PARTIALLY_DISPENSED, DISPENSED, DISPENSED_EXTERNAL or CANCELLED&quot;)
+            @RequestParam(required = false) String status) {
+
+<span class="fc" id="L78">        List&lt;PrescriptionResponse&gt; prescriptions = prescriptionService.findAllPrescriptions(status);</span>
+<span class="fc" id="L79">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Prescriptions retrieved successfully&quot;, prescriptions));
+    }
+
+    @Operation(
+            summary = &quot;List today's prescriptions&quot;,
+            description = &quot;Returns prescriptions created today excluding CANCELLED prescriptions. &quot;
+                    + &quot;ISSUED and DISPENSED prescriptions are included. &quot;
+                    + &quot;Returns 403 without PRESCRIPTION_READ_ALL.&quot;
+    )
+    @GetMapping(&quot;/today&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_READ_ALL + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findTodaysPrescriptions() {
+
+<span class="nc" id="L93">        List&lt;PrescriptionResponse&gt; prescriptions =</span>
+<span class="nc" id="L94">                prescriptionService.findTodaysPrescriptions();</span>
+
+<span class="nc" id="L96">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Today's prescriptions retrieved successfully&quot;,
+                        prescriptions
+                )
+        );
+    }
+
+    @Operation(
+            summary = &quot;Get a prescription by ID&quot;,
+            description = &quot;Returns the full prescription including its items. &quot;
+                    + &quot;Clinical notes are stored on the appointment, not the prescription. &quot;
+                    + &quot;Returns 404 when the prescription does not exist.&quot;)
+    @GetMapping(&quot;/{id}&quot;)
+    @PreAuthorize(
+            &quot;hasAuthority('&quot; + Permission.PRESCRIPTION_READ_ALL + &quot;')&quot;
+                    + &quot; or hasAuthority('&quot; + Permission.PRESCRIPTION_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; findPrescriptionById(@PathVariable Long id) {
+
+<span class="fc" id="L116">        PrescriptionDetailResponse response = prescriptionService.findPrescriptionById(id);</span>
+<span class="fc" id="L117">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(true, &quot;Prescription retrieved successfully&quot;, response));
+    }
+
+    @Operation(summary = &quot;Mark prescription for external dispensing&quot;, description = &quot;Marks an ISSUED prescription for external dispensing. &quot;
+                    + &quot;Only ISSUED prescriptions are allowed. &quot;
+                    + &quot;DISPENSED or CANCELLED prescriptions return 400 Bad Request.&quot;)
+    @PatchMapping(&quot;/{id}/mark-external&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_DISPENSE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; markExternal(
+                    @PathVariable Long id) {
+
+<span class="nc" id="L129">            ExternalDispensingResponse response = externalDispensingService.markPrescriptionExternal(id);</span>
+
+<span class="nc" id="L131">            return ResponseEntity.ok(</span>
+                            new ApiResponse&lt;&gt;(
+                                            true,
+                                            &quot;Prescription marked for external dispensing successfully&quot;,
+                                            response));
+    }
+
+    @Operation(
+            summary = &quot;Cancel a prescription&quot;,
+            description = &quot;Transitions an ISSUED prescription to CANCELLED. &quot;
+                    + &quot;Dispensed prescriptions cannot be cancelled — attempting to do so returns &quot;
+                    + &quot;400 Bad Request. Returns 404 when the prescription does not exist and &quot;
+                    + &quot;403 without PRESCRIPTION_CREATE (Doctor only).&quot;)
+    @DeleteMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_CREATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; cancelPrescription(@PathVariable Long id) {
+
+<span class="fc" id="L148">        prescriptionService.cancelPrescription(id);</span>
+<span class="fc" id="L149">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Prescription cancelled successfully&quot;));</span>
+    }
+
+    @Operation(
+            summary = &quot;Update a prescription (DDP-25)&quot;,
+            description = &quot;Replaces the content of an ISSUED prescription: the full item list &quot;
+                    + &quot;(required; old item lines are replaced). The same medicine rules as create &quot;
+                    + &quot;apply, and a rejected request changes nothing. Clinical notes are not part &quot;
+                    + &quot;of a prescription. Status, doctor, patient, &quot;
+                    + &quot;appointment and date are never modified. Only the doctor who issued the &quot;
+                    + &quot;prescription may update it (400 otherwise). Returns 200; 400 for &quot;
+                    + &quot;validation/business-rule failures or non-ISSUED status; 404 for an unknown &quot;
+                    + &quot;prescription; 403 without PRESCRIPTION_UPDATE (Doctor only) — Admin, &quot;
+                    + &quot;Pharmacist and Super Admin receive 403.&quot;)
+    @PutMapping(&quot;/{id}&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_UPDATE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; updatePrescription(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdatePrescriptionRequest request) {
+
+<span class="fc" id="L169">        PrescriptionResponse response =  prescriptionService.updatePrescription(id, request);</span>
+
+<span class="fc" id="L171">        return ResponseEntity.ok(</span>
+                new ApiResponse&lt;&gt;(
+                        true,
+                        &quot;Prescription updated successfully&quot;,
+                        response));
+    }
+
+    @Operation(summary = &quot;Preview in-clinic dispensing&quot;, description = &quot;Read-only remaining quantities, price, stock, shortfalls and quarantine/expiry reasons. Doctors may view only their own prescriptions.&quot;)
+    @GetMapping(&quot;/{id}/dispense-preview&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_READ_ALL + &quot;') or hasAuthority('&quot; + Permission.PRESCRIPTION_READ + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; dispensePreview(@PathVariable Long id) {
+<span class="fc" id="L182">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Dispense preview retrieved successfully&quot;, dispensingService.preview(id)));</span>
+    }
+
+    @Operation(summary = &quot;Dispense a prescription in clinic&quot;, description = &quot;Atomically dispenses remaining IN_HOUSE quantities. Set confirmPartial=true to accept stock shortfalls. Returns 400 for completed/cancelled or unsafe medicines, 404 when missing, and 409 for stock or concurrency conflicts.&quot;)
+    @PostMapping(&quot;/{id}/dispense&quot;)
+    @PreAuthorize(&quot;hasAuthority('&quot; + Permission.PRESCRIPTION_DISPENSE + &quot;')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;?&gt;&gt; dispensePrescription(@PathVariable Long id,
+            @Valid @RequestBody com.onecare.backend.dto.request.DispensePrescriptionRequest request) {
+<span class="fc" id="L190">        return ResponseEntity.ok(new ApiResponse&lt;&gt;(true, &quot;Prescription dispensed successfully&quot;,</span>
+<span class="fc" id="L191">                dispensingService.dispense(id, request.confirmPartial())));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

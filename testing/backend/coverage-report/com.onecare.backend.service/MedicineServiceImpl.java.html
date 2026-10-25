@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MedicineServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">MedicineServiceImpl.java</span></div><h1>MedicineServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.MedicineRequest;
+import com.onecare.backend.dto.request.StockUpdateRequest;
+import com.onecare.backend.dto.response.MedicineResponse;
+import com.onecare.backend.entity.Medicine;
+import com.onecare.backend.exception.InvalidStockException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.MedicineRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+<span class="fc" id="L21">@Slf4j</span>
+public class MedicineServiceImpl implements MedicineService {
+
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    private static final int NEAR_EXPIRY_DAYS = 30;
+
+    private final MedicineRepository medicineRepository;
+    private final AuditService auditService;
+
+<span class="fc" id="L32">    public MedicineServiceImpl(MedicineRepository medicineRepository, AuditService auditService) {</span>
+<span class="fc" id="L33">        this.medicineRepository = medicineRepository;</span>
+<span class="fc" id="L34">        this.auditService = auditService;</span>
+<span class="fc" id="L35">    }</span>
+
+    @Override
+    @Transactional
+    @Audited(action = &quot;MEDICINE_CREATE&quot;, module = &quot;MEDICINE&quot;)
+    public MedicineResponse createMedicine(MedicineRequest request) {
+
+<span class="fc" id="L42">        Medicine medicine = new Medicine();</span>
+
+<span class="fc" id="L44">        medicine.setName(request.name());</span>
+<span class="fc" id="L45">        medicine.setGenericName(request.genericName());</span>
+<span class="fc" id="L46">        medicine.setCategory(request.category());</span>
+<span class="fc" id="L47">        medicine.setUnit(request.unit());</span>
+<span class="fc" id="L48">        medicine.setPrice(request.price());</span>
+<span class="fc" id="L49">        medicine.setExpiryDate(request.expiryDate());</span>
+<span class="fc" id="L50">        medicine.setReorderLevel(request.reorderLevel());</span>
+
+        // Stock is initially zero.
+        // Stock changes must be done through the stock update API.
+<span class="fc" id="L54">        medicine.setStockQuantity(0);</span>
+
+<span class="fc" id="L56">        medicine.setIsQuarantined(</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                request.isQuarantined() != null</span>
+<span class="fc" id="L58">                        ? request.isQuarantined()</span>
+<span class="nc" id="L59">                        : false</span>
+        );
+
+<span class="fc" id="L62">        LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L63">        medicine.setCreatedAt(now);</span>
+<span class="fc" id="L64">        medicine.setUpdatedAt(now);</span>
+
+<span class="fc" id="L66">        Medicine savedMedicine = medicineRepository.save(medicine);</span>
+
+<span class="fc" id="L68">        log.info(</span>
+                &quot;Medicine created | medicineId={} | name={}&quot;,
+<span class="fc" id="L70">                savedMedicine.getMedicineId(),</span>
+<span class="fc" id="L71">                savedMedicine.getName()</span>
+        );
+
+<span class="fc" id="L74">        return mapToResponse(savedMedicine);</span>
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;MedicineResponse&gt; findAllMedicines(String search) {
+
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (search == null) {</span>
+<span class="fc" id="L82">        return medicineRepository.findAll()</span>
+<span class="fc" id="L83">                .stream()</span>
+<span class="fc" id="L84">                .map(this::mapToResponse)</span>
+<span class="fc" id="L85">                .toList();</span>
+    }
+
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (search.isBlank()) {</span>
+<span class="nc" id="L89">            return List.of(); // AC/negative test: empty search -&gt; 200 []</span>
+        }
+
+        // Name (partial, case-insensitive) and medicine ID (exact) in one
+        // DB query
+<span class="nc" id="L94">        return medicineRepository.search(search.trim())</span>
+<span class="nc" id="L95">                .stream()</span>
+<span class="nc" id="L96">                .map(this::mapToResponse)</span>
+<span class="nc" id="L97">                .toList();</span>
+    }
+
+    @Override
+    @Transactional
+    public MedicineResponse findMedicineById(Long id) {
+
+<span class="nc" id="L104">        Medicine medicine = findMedicine(id);</span>
+
+<span class="nc" id="L106">        checkAndQuarantineIfExpired(medicine);</span>
+
+<span class="nc" id="L108">        return mapToResponse(medicine);</span>
+    }
+
+    @Override
+    @Transactional
+    @Audited(action = &quot;MEDICINE_UPDATE&quot;, module = &quot;MEDICINE&quot;)
+    public MedicineResponse updateMedicine(
+            Long id,
+            MedicineRequest request
+    ) {
+
+<span class="fc" id="L119">        Medicine medicine = findMedicine(id);</span>
+
+<span class="fc" id="L121">        medicine.setName(request.name());</span>
+<span class="fc" id="L122">        medicine.setGenericName(request.genericName());</span>
+<span class="fc" id="L123">        medicine.setCategory(request.category());</span>
+<span class="fc" id="L124">        medicine.setUnit(request.unit());</span>
+<span class="fc" id="L125">        medicine.setPrice(request.price());</span>
+<span class="fc" id="L126">        medicine.setExpiryDate(request.expiryDate());</span>
+<span class="fc" id="L127">        medicine.setReorderLevel(request.reorderLevel());</span>
+
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (request.isQuarantined() != null) {</span>
+<span class="fc" id="L130">            medicine.setIsQuarantined(request.isQuarantined());</span>
+        }
+
+        /*
+         * Stock quantity is intentionally NOT updated here.
+         *
+         * Stock can only be changed through:
+         * PATCH /api/medicines/{id}/stock
+         */
+
+<span class="fc" id="L140">        medicine.setUpdatedAt(LocalDateTime.now());</span>
+
+<span class="fc" id="L142">        Medicine updatedMedicine = medicineRepository.save(medicine);</span>
+
+<span class="fc" id="L144">        log.info(</span>
+                &quot;Medicine updated | medicineId={}&quot;,
+<span class="fc" id="L146">                updatedMedicine.getMedicineId()</span>
+        );
+
+<span class="fc" id="L149">        return mapToResponse(updatedMedicine);</span>
+    }
+
+    @Override
+    @Transactional
+    @Audited(action = &quot;MEDICINE_DELETE&quot;, module = &quot;MEDICINE&quot;)
+    public void deleteMedicine(Long id) {
+
+<span class="nc" id="L157">        Medicine medicine = findMedicine(id);</span>
+
+<span class="nc" id="L159">        medicineRepository.delete(medicine);</span>
+
+<span class="nc" id="L161">        log.info(</span>
+                &quot;Medicine deleted | medicineId={}&quot;,
+                id
+        );
+<span class="nc" id="L165">    }</span>
+
+    @Override
+    @Transactional
+    @Audited(action = &quot;MEDICINE_STOCK_UPDATE&quot;, module = &quot;MEDICINE&quot;)
+    public MedicineResponse updateStock(
+            Long id,
+            StockUpdateRequest request
+    ) {
+
+<span class="fc" id="L175">        Medicine medicine = findMedicine(id);</span>
+
+        // All stock deltas serialize on this row; refresh avoids a stale entity
+        // already loaded by another service earlier in the transaction.
+<span class="fc" id="L179">        entityManager.flush();</span>
+<span class="fc" id="L180">        entityManager.refresh(medicine, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="fc" id="L181">        checkAndQuarantineIfExpired(medicine);</span>
+<span class="fc" id="L182">        int currentStock = medicine.getStockQuantity();</span>
+<span class="fc" id="L183">        int delta = request.delta();</span>
+
+        /*
+         * Use long for the calculation to avoid integer overflow.
+         */
+<span class="fc" id="L188">        long newStock = (long) currentStock + delta;</span>
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (newStock &lt; 0) {</span>
+
+<span class="fc" id="L192">            log.warn(</span>
+                    &quot;Stock update rejected | medicineId={} | currentStock={} | delta={}&quot;,
+                    id,
+<span class="fc" id="L195">                    currentStock,</span>
+<span class="fc" id="L196">                    delta</span>
+            );
+
+<span class="fc" id="L199">            throw new InvalidStockException(</span>
+                    &quot;Stock quantity cannot be negative&quot;
+            );
+        }
+
+<span class="fc" id="L204">        medicine.setStockQuantity((int) newStock);</span>
+<span class="fc" id="L205">        medicine.setUpdatedAt(LocalDateTime.now());</span>
+
+<span class="fc" id="L207">        Medicine updatedMedicine = medicineRepository.save(medicine);</span>
+
+<span class="fc" id="L209">        log.info(</span>
+                &quot;Stock updated | medicineId={} | previousStock={} | delta={} | newStock={}&quot;,
+                id,
+<span class="fc" id="L212">                currentStock,</span>
+<span class="fc" id="L213">                delta,</span>
+<span class="fc" id="L214">                newStock</span>
+        );
+
+
+<span class="fc" id="L218">        return mapToResponse(updatedMedicine);</span>
+    }
+
+    @Override
+    @Transactional
+    public List&lt;MedicineResponse&gt; findLowStockMedicines() {
+
+<span class="fc" id="L225">        quarantineExpiredMedicines();</span>
+
+<span class="fc" id="L227">        return medicineRepository.findLowStockMedicines()</span>
+<span class="fc" id="L228">                .stream()</span>
+<span class="fc" id="L229">                .map(this::mapToResponse)</span>
+<span class="fc" id="L230">                .toList();</span>
+    }
+
+    @Override
+    @Transactional
+    public List&lt;MedicineResponse&gt; findNearExpiryMedicines() {
+
+<span class="fc" id="L237">        quarantineExpiredMedicines();</span>
+
+<span class="fc" id="L239">        LocalDate today = LocalDate.now();</span>
+<span class="fc" id="L240">        LocalDate nearExpiryDate = today.plusDays(NEAR_EXPIRY_DAYS);</span>
+
+<span class="fc" id="L242">        return medicineRepository</span>
+<span class="fc" id="L243">                .findNearExpiryMedicines(today, nearExpiryDate)</span>
+<span class="fc" id="L244">                .stream()</span>
+<span class="fc" id="L245">                .map(this::mapToResponse)</span>
+<span class="fc" id="L246">                .toList();</span>
+    }
+
+    @Override
+    @Transactional
+    public List&lt;MedicineResponse&gt; findAvailableMedicines() {
+
+<span class="fc" id="L253">        quarantineExpiredMedicines();</span>
+
+<span class="fc" id="L255">        return medicineRepository.findByIsQuarantinedFalse()</span>
+<span class="fc" id="L256">                .stream()</span>
+<span class="fc" id="L257">                .map(this::mapToResponse)</span>
+<span class="fc" id="L258">                .toList();</span>
+    }
+
+    @Override
+    @Scheduled(cron = &quot;0 0 0 * * *&quot;)
+    @Transactional
+    public void quarantineExpiredMedicines() {
+
+<span class="fc" id="L266">        LocalDate today = LocalDate.now();</span>
+
+<span class="fc" id="L268">        List&lt;Medicine&gt; expiredMedicines =</span>
+                medicineRepository
+<span class="fc" id="L270">                        .findByExpiryDateBeforeAndIsQuarantinedFalse(today);</span>
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (Medicine medicine : expiredMedicines) {</span>
+
+<span class="fc" id="L274">            medicine.setIsQuarantined(true);</span>
+<span class="fc" id="L275">            medicine.setUpdatedAt(LocalDateTime.now());</span>
+
+<span class="fc" id="L277">            log.info(</span>
+                    &quot;Medicine quarantined due to expiry | medicineId={} | expiryDate={}&quot;,
+<span class="fc" id="L279">                    medicine.getMedicineId(),</span>
+<span class="fc" id="L280">                    medicine.getExpiryDate()</span>
+            );
+<span class="fc" id="L282">        }</span>
+
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (!expiredMedicines.isEmpty()) {</span>
+<span class="fc" id="L285">            medicineRepository.saveAll(expiredMedicines);</span>
+
+<span class="fc" id="L287">            auditService.record(</span>
+                    null,
+                    &quot;MEDICINE_QUARANTINE&quot;,
+                    &quot;MEDICINE&quot;,
+                    null,
+<span class="fc" id="L292">                    &quot;Quarantined &quot; + expiredMedicines.size() + &quot; expired medicine(s)&quot;,</span>
+                    null);
+        }
+<span class="fc" id="L295">    }</span>
+
+    private Medicine findMedicine(Long id) {
+
+<span class="fc" id="L299">        return medicineRepository.findById(id)</span>
+<span class="fc" id="L300">                .orElseThrow(() -&gt;</span>
+<span class="nc" id="L301">                        new ResourceNotFoundException(</span>
+                                &quot;Medicine not found with id: &quot; + id
+                        )
+                );
+    }
+
+    private void checkAndQuarantineIfExpired(Medicine medicine) {
+
+<span class="fc" id="L309">        LocalDate today = LocalDate.now();</span>
+
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        if (medicine.getExpiryDate().isBefore(today)</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                &amp;&amp; !Boolean.TRUE.equals(medicine.getIsQuarantined())) {</span>
+
+<span class="nc" id="L314">            medicine.setIsQuarantined(true);</span>
+<span class="nc" id="L315">            medicine.setUpdatedAt(LocalDateTime.now());</span>
+
+<span class="nc" id="L317">            medicineRepository.save(medicine);</span>
+
+<span class="nc" id="L319">            log.info(</span>
+                    &quot;Medicine quarantined during read due to expiry | medicineId={} | expiryDate={}&quot;,
+<span class="nc" id="L321">                    medicine.getMedicineId(),</span>
+<span class="nc" id="L322">                    medicine.getExpiryDate()</span>
+            );
+        }
+<span class="fc" id="L325">    }</span>
+
+    private MedicineResponse mapToResponse(Medicine medicine) {
+
+<span class="fc" id="L329">        return new MedicineResponse(</span>
+<span class="fc" id="L330">                medicine.getMedicineId(),</span>
+<span class="fc" id="L331">                medicine.getName(),</span>
+<span class="fc" id="L332">                medicine.getGenericName(),</span>
+<span class="fc" id="L333">                medicine.getCategory(),</span>
+<span class="fc" id="L334">                medicine.getUnit(),</span>
+<span class="fc" id="L335">                medicine.getPrice(),</span>
+<span class="fc" id="L336">                medicine.getStockQuantity(),</span>
+<span class="fc" id="L337">                medicine.getExpiryDate(),</span>
+<span class="fc" id="L338">                medicine.getReorderLevel(),</span>
+<span class="fc" id="L339">                medicine.getIsQuarantined(),</span>
+<span class="fc" id="L340">                medicine.getCreatedAt(),</span>
+<span class="fc" id="L341">                medicine.getUpdatedAt()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

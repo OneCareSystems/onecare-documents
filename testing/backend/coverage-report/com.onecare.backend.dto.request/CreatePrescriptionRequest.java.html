@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CreatePrescriptionRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.dto.request</a> &gt; <span class="el_source">CreatePrescriptionRequest.java</span></div><h1>CreatePrescriptionRequest.java</h1><pre class="source lang-java linenums">package com.onecare.backend.dto.request;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+
+import java.util.List;
+
+/**
+ * Request body for POST /api/prescriptions.
+ *
+ * Deliberately has NO status, NO doctorId and NO clinicalNotes fields:
+ * - status is always set server-side to ISSUED
+ * - doctor is always the authenticated user (must have the DOCTOR role)
+ * so a client can never control any of those values.
+ * Clinical notes live on the Appointment entity, not on the prescription.
+ * appointmentId is required — every prescription belongs to an appointment.
+ */
+<span class="fc" id="L19">public record CreatePrescriptionRequest(</span>
+        @NotNull 
+        Long patientId,
+
+        @NotNull
+        Long appointmentId,
+
+        @NotNull @NotEmpty @Valid 
+        List&lt;PrescriptionItemRequest&gt; items) {
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChatQueryClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.chatbot.query</a> &gt; <span class="el_source">ChatQueryClient.java</span></div><h1>ChatQueryClient.java</h1><pre class="source lang-java linenums">package com.onecare.backend.chatbot.query;
+
+import java.util.List;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
+import com.onecare.backend.chatbot.config.ChatbotProperties;
+import com.onecare.backend.chatbot.exception.ChatbotUnavailableException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Spring Boot to Django: POST /internal/chat/query. Authenticated ONLY with the service token (chatbot.service-token).
+ * The patient's own request headers are never forwarded. Patients are anonymous, so no X-OneCare-User-Id is sent.
+ * Every failure becomes ChatbotUnavailableException. Nothing here logs the query text or the token.
+ */
+@Component
+public class ChatQueryClient implements ChatBackend {
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(ChatQueryClient.class);</span>
+    private static final String PATH = &quot;/internal/chat/query&quot;;
+<span class="fc" id="L31">    private static final ObjectMapper JSON = new ObjectMapper();</span>
+
+    private final RestTemplate rest;
+    private final ChatbotProperties props;
+
+<span class="fc" id="L36">    public ChatQueryClient(RestTemplateBuilder builder, ChatbotProperties props) {</span>
+<span class="fc" id="L37">        this.props = props;</span>
+
+<span class="fc" id="L39">        this.rest = builder.rootUri(props.getBaseUrl())</span>
+<span class="fc" id="L40">                .setConnectTimeout(props.getConnectTimeout()).setReadTimeout(props.getReadTimeout()).build();</span>
+
+
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    public ChatBackendResult query(String text) {
+<span class="fc" id="L47">        HttpHeaders headers = new HttpHeaders();</span>
+
+<span class="fc" id="L49">        headers.setBearerAuth(props.getServiceToken());</span>
+
+
+<span class="fc" id="L52">        headers.setContentType(MediaType.APPLICATION_JSON);</span>
+<span class="fc" id="L53">        headers.setAccept(List.of(MediaType.APPLICATION_JSON));</span>
+        // WSGI development servers require Content-Length; a streamed Map body can
+        // use chunked encoding and arrive in Django as an empty request body.
+<span class="fc" id="L56">        byte[] bodyBytes = JSON.createObjectNode().put(&quot;query&quot;, text).toString().getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L57">        headers.setContentLength(bodyBytes.length);</span>
+        try {
+<span class="fc" id="L59">            Map&lt;?, ?&gt; body = rest.exchange(PATH, HttpMethod.POST, new HttpEntity&lt;&gt;(bodyBytes, headers), Map.class).getBody();</span>
+<span class="fc" id="L60">            return ChatBackendResult.fromMap(body);</span>
+<span class="nc" id="L61">        } catch (HttpStatusCodeException ex) {</span>
+            // 401/403 = wrong service token, 400 = limits differ from Django's, 5xx = Django or its LLM is down
+<span class="nc" id="L63">            log.error(&quot;Chatbot service returned HTTP {} for a chat query&quot;, ex.getStatusCode().value());</span>
+<span class="nc" id="L64">            throw new ChatbotUnavailableException(&quot;Chatbot service error (HTTP &quot; + ex.getStatusCode().value() + &quot;)&quot;);</span>
+<span class="fc" id="L65">        } catch (ResourceAccessException ex) {</span>
+<span class="fc" id="L66">            log.error(&quot;Chatbot service unreachable or timed out ({})&quot;, ex.getClass().getSimpleName());</span>
+<span class="fc" id="L67">            throw new ChatbotUnavailableException(&quot;Chatbot service is unreachable&quot;, ex);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

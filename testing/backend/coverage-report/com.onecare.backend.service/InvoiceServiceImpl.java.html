@@ -1,0 +1,735 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvoiceServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">InvoiceServiceImpl.java</span></div><h1>InvoiceServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.GenerateInvoiceRequest;
+import com.onecare.backend.dto.request.RecordPaymentRequest;
+import com.onecare.backend.dto.request.UpdateInvoiceLineRequest;
+import com.onecare.backend.dto.request.UpdateInvoiceRequest;
+import com.onecare.backend.dto.response.InvoiceResponse;
+import com.onecare.backend.dto.response.InvoiceSummaryResponse;
+import com.onecare.backend.entity.Appointment;
+import com.onecare.backend.entity.DispensingItem;
+import com.onecare.backend.entity.ExternalDispensing;
+import com.onecare.backend.entity.Invoice;
+import com.onecare.backend.entity.InvoiceItem;
+import com.onecare.backend.entity.Medicine;
+import com.onecare.backend.entity.Patient;
+import com.onecare.backend.entity.Payment;
+import com.onecare.backend.entity.Prescription;
+import com.onecare.backend.entity.PrescriptionItem;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.AppointmentStatus;
+import com.onecare.backend.enums.InvoiceStatus;
+import com.onecare.backend.enums.PrescriptionItemType;
+import com.onecare.backend.enums.PrescriptionStatus;
+import com.onecare.backend.enums.Status;
+import com.onecare.backend.exception.BusinessRuleException;
+import com.onecare.backend.exception.ConflictException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.*;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.Year;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+public class InvoiceServiceImpl implements InvoiceService {
+
+<span class="fc" id="L61">    private static final Logger log = LoggerFactory.getLogger(InvoiceServiceImpl.class);</span>
+
+    /** System-managed line: never sent by a client, never editable. */
+    static final String CONSULTATION_DESCRIPTION = &quot;Consultation charge&quot;;
+
+    private static final int MONEY_SCALE = 2;
+<span class="fc" id="L67">    private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;</span>
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private final InvoiceRepository invoiceRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final PrescriptionRepository prescriptionRepository;
+    private final ExternalDispensingRepository externalDispensingRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final SystemSettingService systemSettingService;
+
+    public InvoiceServiceImpl(InvoiceRepository invoiceRepository,
+                              AppointmentRepository appointmentRepository,
+                              PrescriptionRepository prescriptionRepository,
+                              ExternalDispensingRepository externalDispensingRepository,
+                              PatientRepository patientRepository,
+                              UserRepository userRepository,
+<span class="fc" id="L85">                              SystemSettingService systemSettingService) {</span>
+<span class="fc" id="L86">        this.invoiceRepository = invoiceRepository;</span>
+<span class="fc" id="L87">        this.appointmentRepository = appointmentRepository;</span>
+<span class="fc" id="L88">        this.prescriptionRepository = prescriptionRepository;</span>
+<span class="fc" id="L89">        this.externalDispensingRepository = externalDispensingRepository;</span>
+<span class="fc" id="L90">        this.patientRepository = patientRepository;</span>
+<span class="fc" id="L91">        this.userRepository = userRepository;</span>
+<span class="fc" id="L92">        this.systemSettingService = systemSettingService;</span>
+<span class="fc" id="L93">    }</span>
+
+    // ------------------------------------------------------------------
+    // Generate (FR035, UC22)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Audited(action = &quot;INVOICE_GENERATE&quot;, module = &quot;INVOICE&quot;)
+    public InvoiceResponse generateInvoice(GenerateInvoiceRequest request) {
+
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">        boolean hasAppointment = request != null &amp;&amp; request.appointmentId() != null;</span>
+<span class="pc bpc" id="L104" title="1 of 4 branches missed.">        boolean hasDispense = request != null &amp;&amp; request.dispenseId() != null;</span>
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (hasAppointment == hasDispense) { // both or neither</span>
+<span class="fc" id="L107">            throw new BusinessRuleException(</span>
+                    &quot;Exactly one of appointmentId or dispenseId is required&quot;);
+        }
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        return hasDispense</span>
+<span class="fc" id="L112">                ? generateDispenseInvoice(request.dispenseId())</span>
+<span class="fc" id="L113">                : generateAppointmentInvoice(request.appointmentId());</span>
+    }
+
+    private InvoiceResponse generateAppointmentInvoice(Long appointmentId) {
+
+<span class="fc" id="L118">        User billedBy = resolveAuthenticatedUser();</span>
+
+<span class="fc" id="L120">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="fc" id="L121">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Appointment not found with id: &quot; + appointmentId));
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (appointment.getStatus() != AppointmentStatus.COMPLETED) {</span>
+<span class="fc" id="L125">            log.warn(&quot;Invoice generation rejected | appointmentId={} | appointmentStatus={} &quot;</span>
+                            + &quot;| reason=CONSULTATION_NOT_COMPLETED | performedBy={}&quot;,
+<span class="fc" id="L127">                    appointment.getAppointmentId(), appointment.getStatus(), billedBy.getUsername());</span>
+<span class="fc" id="L128">            throw new BusinessRuleException(&quot;Consultation for appointment id: &quot;</span>
+<span class="fc" id="L129">                    + appointment.getAppointmentId()</span>
+                    + &quot; is not completed; only completed consultations can be invoiced&quot;);
+        }
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (invoiceRepository.existsByAppointmentAppointmentId(appointment.getAppointmentId())) {</span>
+<span class="fc" id="L134">            log.warn(&quot;Invoice generation rejected | appointmentId={} | reason=ALREADY_INVOICED &quot;</span>
+                            + &quot;| performedBy={}&quot;,
+<span class="fc" id="L136">                    appointment.getAppointmentId(), billedBy.getUsername());</span>
+<span class="fc" id="L137">            throw new ConflictException(&quot;An invoice already exists for appointment id: &quot;</span>
+<span class="fc" id="L138">                    + appointment.getAppointmentId());</span>
+        }
+
+<span class="fc" id="L141">        Prescription prescription = prescriptionRepository</span>
+<span class="fc" id="L142">                .findByAppointmentAppointmentId(appointment.getAppointmentId())</span>
+<span class="fc" id="L143">                .orElse(null);</span>
+
+<span class="fc" id="L145">        Invoice invoice = new Invoice();</span>
+<span class="fc" id="L146">        invoice.setPatient(appointment.getPatient());</span>
+<span class="fc" id="L147">        invoice.setAppointment(appointment);</span>
+<span class="fc" id="L148">        invoice.setStatus(InvoiceStatus.UNPAID);</span>
+<span class="fc" id="L149">        invoice.setAmountPaid(money(BigDecimal.ZERO));</span>
+<span class="fc" id="L150">        invoice.setCreatedBy(billedBy);</span>
+<span class="fc" id="L151">        invoice.setItems(buildLines(invoice, prescription));</span>
+<span class="fc" id="L152">        invoice.setTotal(sumOfLines(invoice));</span>
+
+        // The invoice number is derived from the generated id, so it must be
+        // written after the row exists: a unique placeholder satisfies the
+        // unique index inside the transaction and is replaced before commit.
+<span class="fc" id="L157">        Invoice saved = persistInvoice(invoice,</span>
+                &quot;An invoice already exists for appointment id: &quot; + appointmentId);
+
+<span class="fc" id="L160">        saved.setInvoiceNumber(invoiceNumber(saved.getInvoiceId()));</span>
+<span class="fc" id="L161">        saved = invoiceRepository.save(saved);</span>
+
+<span class="fc" id="L163">        log.info(&quot;Invoice generated | invoiceId={} | invoiceNumber={} | patientId={} &quot;</span>
+                        + &quot;| appointmentId={} | total={} | lines={} | performedBy={}&quot;,
+<span class="fc" id="L165">                saved.getInvoiceId(), saved.getInvoiceNumber(),</span>
+<span class="fc" id="L166">                appointment.getPatient().getPatientId(), appointment.getAppointmentId(),</span>
+<span class="fc" id="L167">                saved.getTotal(), saved.getItems().size(), billedBy.getUsername());</span>
+
+<span class="fc" id="L169">        return InvoiceResponse.from(saved);</span>
+    }
+
+    /**
+     * External dispensing invoice: medicines only (no consultation line), one
+     * invoice per dispense event, patient optional for unknown walk-ins.
+     */
+    private InvoiceResponse generateDispenseInvoice(Long dispenseId) {
+
+<span class="fc" id="L178">        User billedBy = resolveAuthenticatedUser();</span>
+
+<span class="fc" id="L180">        ExternalDispensing event = externalDispensingRepository.findById(dispenseId)</span>
+<span class="fc" id="L181">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Dispense event not found with id: &quot; + dispenseId));
+
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (invoiceRepository.existsByDispenseDispenseId(dispenseId)) {</span>
+<span class="fc" id="L185">            log.warn(&quot;Invoice generation rejected | dispenseId={} | reason=ALREADY_INVOICED &quot;</span>
+                            + &quot;| performedBy={}&quot;,
+<span class="fc" id="L187">                    dispenseId, billedBy.getUsername());</span>
+<span class="fc" id="L188">            throw new ConflictException(&quot;An invoice already exists for dispense event id: &quot;</span>
+                    + dispenseId);
+        }
+
+        // Medicines are billed with the consultation invoice when that invoice
+        // includes medicine lines. A consultation-only invoice (patient
+        // collects later) does not block: each dispense event then carries
+        // its own invoice, so every unit is still charged exactly once (AC7).
+<span class="fc" id="L196">        Prescription prescription = event.getPrescription();</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">        if (prescription != null &amp;&amp; prescription.getAppointment() != null) {</span>
+<span class="fc" id="L198">            Long appointmentId = prescription.getAppointment().getAppointmentId();</span>
+<span class="fc" id="L199">            Invoice consultationInvoice = invoiceRepository</span>
+<span class="fc" id="L200">                    .findByAppointmentAppointmentId(appointmentId).orElse(null);</span>
+
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            boolean billedWithConsultation = consultationInvoice != null</span>
+<span class="fc" id="L203">                    &amp;&amp; consultationInvoice.getItems().stream()</span>
+<span class="fc bfc" id="L204" title="All 4 branches covered.">                            .anyMatch(item -&gt; item.getMedicine() != null);</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            if (billedWithConsultation) {</span>
+<span class="fc" id="L206">                log.warn(&quot;Invoice generation rejected | dispenseId={} | appointmentId={} &quot;</span>
+                                + &quot;| reason=MEDICINES_BILLED_WITH_CONSULTATION | performedBy={}&quot;,
+<span class="fc" id="L208">                        dispenseId, appointmentId, billedBy.getUsername());</span>
+<span class="fc" id="L209">                throw new ConflictException(&quot;Dispense event id: &quot; + dispenseId</span>
+                        + &quot; belongs to appointment id: &quot; + appointmentId
+                        + &quot; whose invoice already includes medicine lines&quot;);
+            }
+        }
+
+<span class="fc" id="L215">        Invoice invoice = new Invoice();</span>
+<span class="fc" id="L216">        invoice.setPatient(resolveDispensePatient(event));</span>
+<span class="fc" id="L217">        invoice.setDispense(event);</span>
+<span class="fc" id="L218">        invoice.setStatus(InvoiceStatus.UNPAID);</span>
+<span class="fc" id="L219">        invoice.setAmountPaid(money(BigDecimal.ZERO));</span>
+<span class="fc" id="L220">        invoice.setCreatedBy(billedBy);</span>
+<span class="fc" id="L221">        invoice.setItems(buildDispenseLines(invoice, event));</span>
+<span class="fc" id="L222">        invoice.setTotal(sumOfLines(invoice));</span>
+
+<span class="fc" id="L224">        Invoice saved = persistInvoice(invoice,</span>
+                &quot;An invoice already exists for dispense event id: &quot; + dispenseId);
+
+<span class="fc" id="L227">        saved.setInvoiceNumber(invoiceNumber(saved.getInvoiceId()));</span>
+<span class="fc" id="L228">        saved = invoiceRepository.save(saved);</span>
+
+<span class="fc" id="L230">        log.info(&quot;Invoice generated | invoiceId={} | invoiceNumber={} | dispenseId={} &quot;</span>
+                        + &quot;| patientId={} | total={} | lines={} | performedBy={}&quot;,
+<span class="fc" id="L232">                saved.getInvoiceId(), saved.getInvoiceNumber(), event.getDispenseId(),</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                invoice.getPatient() != null ? invoice.getPatient().getPatientId() : null,</span>
+<span class="fc" id="L234">                saved.getTotal(), saved.getItems().size(), billedBy.getUsername());</span>
+
+<span class="fc" id="L236">        return InvoiceResponse.from(saved);</span>
+    }
+
+    /** Prescription patient, else the recorded pickup patient, else null (OTC walk-in). */
+    private Patient resolveDispensePatient(ExternalDispensing event) {
+
+<span class="pc bpc" id="L242" title="1 of 4 branches missed.">        if (event.getPrescription() != null &amp;&amp; event.getPrescription().getPatient() != null) {</span>
+<span class="fc" id="L243">            return event.getPrescription().getPatient();</span>
+        }
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        if (event.getPatientId() != null) {</span>
+<span class="nc" id="L246">            return patientRepository.findById(event.getPatientId())</span>
+<span class="nc" id="L247">                    .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+<span class="nc" id="L248">                            &quot;Patient not found with id: &quot; + event.getPatientId()));</span>
+        }
+<span class="fc" id="L250">        return null;</span>
+    }
+
+    /**
+     * One medicine line per handed-over item: the prescribed item's catalog
+     * medicine, or the item's own medicine for OTC sales. Never a
+     * consultation line - no appointment happened.
+     */
+    private List&lt;InvoiceItem&gt; buildDispenseLines(Invoice invoice, ExternalDispensing event) {
+
+<span class="fc" id="L260">        List&lt;InvoiceItem&gt; lines = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        for (DispensingItem dispensed : event.getItems()) {</span>
+
+<span class="fc" id="L263">            Medicine medicine = dispenseMedicine(dispensed);</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">            if (medicine == null) {</span>
+<span class="nc" id="L265">                log.warn(&quot;Dispense line skipped | dispenseId={} | dispensingItemId={} &quot;</span>
+                                + &quot;| reason=EXTERNAL_PURCHASE&quot;,
+<span class="nc" id="L267">                        event.getDispenseId(), dispensed.getDispensingItemId());</span>
+<span class="nc" id="L268">                continue;</span>
+            }
+
+<span class="fc" id="L271">            int quantity = dispensed.getQuantityDispensed();</span>
+            // Never bill more than prescribed (AC7) for item-linked lines.
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (dispensed.getPrescriptionItem() != null</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">                    &amp;&amp; dispensed.getPrescriptionItem().getQuantity() != null) {</span>
+<span class="fc" id="L275">                quantity = Math.min(quantity, dispensed.getPrescriptionItem().getQuantity());</span>
+            }
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (quantity &lt;= 0) {</span>
+<span class="nc" id="L278">                log.warn(&quot;Dispense line skipped | dispenseId={} | dispensingItemId={} &quot;</span>
+                                + &quot;| quantity={} | reason=NOTHING_BILLABLE&quot;,
+<span class="nc" id="L280">                        event.getDispenseId(), dispensed.getDispensingItemId(), quantity);</span>
+<span class="nc" id="L281">                continue;</span>
+            }
+
+<span class="fc" id="L284">            lines.add(newLine(invoice, medicine, medicine.getName(),</span>
+<span class="fc" id="L285">                    quantity, medicine.getPrice()));</span>
+<span class="fc" id="L286">        }</span>
+
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (lines.isEmpty()) {</span>
+<span class="nc" id="L289">            log.warn(&quot;Invoice generation rejected | dispenseId={} &quot;</span>
+<span class="nc" id="L290">                            + &quot;| reason=NO_BILLABLE_MEDICINE&quot;, event.getDispenseId());</span>
+<span class="nc" id="L291">            throw new BusinessRuleException(&quot;Dispense event id: &quot; + event.getDispenseId()</span>
+                    + &quot; has no billable medicine (EXTERNAL_PURCHASE items are never invoiced)&quot;);
+        }
+<span class="fc" id="L294">        return lines;</span>
+    }
+
+    private Medicine dispenseMedicine(DispensingItem dispensed) {
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (dispensed.getPrescriptionItem() != null</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">                &amp;&amp; dispensed.getPrescriptionItem().getMedicine() != null) {</span>
+<span class="fc" id="L300">            return dispensed.getPrescriptionItem().getMedicine(); // in-house prescribed</span>
+        }
+<span class="fc" id="L302">        return dispensed.getMedicine();                           // OTC / direct product</span>
+    }
+
+    // ------------------------------------------------------------------
+    // List (FR038, UC23)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page&lt;InvoiceSummaryResponse&gt; listInvoices(Long patientId, String invoiceNumber,
+                                                     String status, LocalDate dateFrom,
+                                                     LocalDate dateTo, Integer page, Integer size) {
+
+<span class="fc" id="L315">        InvoiceStatus filterStatus = parseStatus(status);</span>
+
+<span class="pc bpc" id="L317" title="2 of 6 branches missed.">        if (dateFrom != null &amp;&amp; dateTo != null &amp;&amp; dateFrom.isAfter(dateTo)) {</span>
+<span class="nc" id="L318">            throw new BusinessRuleException(&quot;dateFrom must not be after dateTo&quot;);</span>
+        }
+
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">        int pageNumber = page == null ? 0 : Math.max(page, 0);</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        int pageSize = size == null</span>
+<span class="nc" id="L323">                ? DEFAULT_PAGE_SIZE</span>
+<span class="fc" id="L324">                : Math.min(Math.max(size, 1), MAX_PAGE_SIZE);</span>
+
+        // Newest first, always - clients cannot re-sort the financial log.
+<span class="fc" id="L327">        Pageable pageable = PageRequest.of(</span>
+                pageNumber,
+                pageSize,
+<span class="fc" id="L330">                Sort.by(</span>
+<span class="fc" id="L331">                        Sort.Order.desc(&quot;createdAt&quot;),</span>
+<span class="fc" id="L332">                        Sort.Order.desc(&quot;invoiceId&quot;)</span>
+                )
+        );
+
+<span class="fc" id="L336">        Specification&lt;Invoice&gt; specification = (root, query, cb) -&gt; {</span>
+<span class="fc" id="L337">            List&lt;Predicate&gt; predicates = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            if (patientId != null) {</span>
+<span class="fc" id="L340">                predicates.add(cb.equal(root.get(&quot;patient&quot;).get(&quot;patientId&quot;), patientId));</span>
+            }
+<span class="pc bpc" id="L342" title="1 of 4 branches missed.">            if (invoiceNumber != null &amp;&amp; !invoiceNumber.isBlank()) {</span>
+<span class="fc" id="L343">                predicates.add(cb.like(cb.upper(root.get(&quot;invoiceNumber&quot;)),</span>
+<span class="fc" id="L344">                        &quot;%&quot; + invoiceNumber.trim().toUpperCase() + &quot;%&quot;));</span>
+            }
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            if (filterStatus != null) {</span>
+<span class="fc" id="L347">                predicates.add(cb.equal(root.get(&quot;status&quot;), filterStatus));</span>
+            }
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            if (dateFrom != null) {</span>
+<span class="fc" id="L350">                predicates.add(cb.greaterThanOrEqualTo(</span>
+<span class="fc" id="L351">                        root.get(&quot;createdAt&quot;), dateFrom.atStartOfDay()));</span>
+            }
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            if (dateTo != null) {</span>
+<span class="fc" id="L354">                predicates.add(cb.lessThan(</span>
+<span class="fc" id="L355">                        root.get(&quot;createdAt&quot;), dateTo.plusDays(1).atStartOfDay()));</span>
+            }
+
+<span class="fc" id="L358">            return cb.and(predicates.toArray(new Predicate[0]));</span>
+        };
+
+<span class="fc" id="L361">        return invoiceRepository.findAll(specification, pageable)</span>
+<span class="fc" id="L362">                .map(InvoiceSummaryResponse::from);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Detail (FR038, UC23)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public InvoiceResponse findInvoiceById(Long id) {
+<span class="fc" id="L372">        return InvoiceResponse.from(findInvoiceByIdInternal(id));</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Line correction (UC22 alt flow)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Audited(action = &quot;INVOICE_LINES_UPDATE&quot;, module = &quot;INVOICE&quot;)
+    public InvoiceResponse updateInvoiceLines(Long id, UpdateInvoiceRequest request) {
+
+<span class="fc" id="L383">        User editor = resolveAuthenticatedUser();</span>
+<span class="fc" id="L384">        Invoice invoice = findInvoiceByIdInternal(id);</span>
+
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        if (invoice.getStatus() == InvoiceStatus.PAID) {</span>
+<span class="fc" id="L387">            log.warn(&quot;Invoice line edit rejected | invoiceId={} | invoiceNumber={} &quot;</span>
+                            + &quot;| status=PAID | reason=PAID_INVOICE | performedBy={}&quot;,
+<span class="fc" id="L389">                    invoice.getInvoiceId(), invoice.getInvoiceNumber(), editor.getUsername());</span>
+<span class="fc" id="L390">            throw new BusinessRuleException(&quot;Invoice &quot; + invoice.getInvoiceNumber()</span>
+                    + &quot; is paid and cannot be edited&quot;);
+        }
+
+        // Editable = medicine lines only; the consultation line is system-managed.
+<span class="fc" id="L395">        Map&lt;Long, InvoiceItem&gt; editable = invoice.getItems().stream()</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">                .filter(item -&gt; item.getMedicine() != null)</span>
+<span class="pc" id="L397">                .collect(Collectors.toMap(InvoiceItem::getInvoiceItemId, item -&gt; item, (a, b) -&gt; a,</span>
+                        LinkedHashMap::new));
+
+        // Validate the whole request BEFORE mutating anything, so a rejected
+        // request leaves the invoice exactly as it was (AC3).
+<span class="fc" id="L402">        Map&lt;Long, Integer&gt; quantities = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        for (UpdateInvoiceLineRequest line : request.items()) {</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">            if (!editable.containsKey(line.invoiceItemId())) {</span>
+<span class="fc" id="L405">                log.warn(&quot;Invoice line edit rejected | invoiceId={} | invoiceItemId={} &quot;</span>
+                                + &quot;| reason=LINE_NOT_EDITABLE | performedBy={}&quot;,
+<span class="fc" id="L407">                        invoice.getInvoiceId(), line.invoiceItemId(), editor.getUsername());</span>
+<span class="fc" id="L408">                throw new BusinessRuleException(&quot;Invoice line id: &quot; + line.invoiceItemId()</span>
+                        + &quot; does not belong to invoice id: &quot; + id
+                        + &quot; or is not editable&quot;);
+            }
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">            if (quantities.put(line.invoiceItemId(), line.quantity()) != null) {</span>
+<span class="nc" id="L413">                throw new BusinessRuleException(</span>
+<span class="nc" id="L414">                        &quot;Duplicate invoice line id: &quot; + line.invoiceItemId());</span>
+            }
+<span class="fc" id="L416">        }</span>
+
+        // Prospective total of the request: consultation line(s) are kept as they
+        // are, medicine lines are the ones listed with their new quantity.
+<span class="fc" id="L420">        BigDecimal prospectiveTotal = money(invoice.getItems().stream()</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">                .filter(item -&gt; item.getMedicine() == null)</span>
+<span class="fc" id="L422">                .map(InvoiceItem::getLineTotal)</span>
+<span class="fc" id="L423">                .reduce(BigDecimal.ZERO, BigDecimal::add));</span>
+
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        for (Map.Entry&lt;Long, Integer&gt; entry : quantities.entrySet()) {</span>
+<span class="fc" id="L426">            InvoiceItem item = editable.get(entry.getKey());</span>
+<span class="fc" id="L427">            prospectiveTotal = money(prospectiveTotal.add(</span>
+<span class="fc" id="L428">                    item.getUnitPrice().multiply(BigDecimal.valueOf(entry.getValue()))));</span>
+<span class="fc" id="L429">        }</span>
+
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        if (prospectiveTotal.compareTo(invoice.getAmountPaid()) &lt; 0) {</span>
+<span class="fc" id="L432">            log.warn(&quot;Invoice line edit rejected | invoiceId={} | invoiceNumber={} | total={} &quot;</span>
+                            + &quot;| amountPaid={} | reason=TOTAL_BELOW_AMOUNT_PAID | performedBy={}&quot;,
+<span class="fc" id="L434">                    invoice.getInvoiceId(), invoice.getInvoiceNumber(), prospectiveTotal,</span>
+<span class="fc" id="L435">                    invoice.getAmountPaid(), editor.getUsername());</span>
+<span class="fc" id="L436">            throw new BusinessRuleException(&quot;New total &quot; + prospectiveTotal</span>
+<span class="fc" id="L437">                    + &quot; would be less than the amount already paid &quot; + invoice.getAmountPaid());</span>
+        }
+
+<span class="fc" id="L440">        quantities.forEach((itemId, quantity) -&gt; {</span>
+<span class="fc" id="L441">            InvoiceItem item = editable.get(itemId);</span>
+<span class="fc" id="L442">            item.setQuantity(quantity);</span>
+<span class="fc" id="L443">            item.setLineTotal(money(item.getUnitPrice().multiply(BigDecimal.valueOf(quantity))));</span>
+<span class="fc" id="L444">        });</span>
+
+        // Medicine lines omitted from the request are dropped (orphanRemoval);
+        // the consultation line is kept.
+<span class="fc" id="L448">        Set&lt;Long&gt; kept = quantities.keySet();</span>
+<span class="fc" id="L449">        invoice.getItems().removeIf(item -&gt;</span>
+<span class="fc bfc" id="L450" title="All 4 branches covered.">                item.getMedicine() != null &amp;&amp; !kept.contains(item.getInvoiceItemId()));</span>
+
+<span class="fc" id="L452">        invoice.setTotal(sumOfLines(invoice));</span>
+
+<span class="fc" id="L454">        Invoice saved = invoiceRepository.saveAndFlush(invoice);</span>
+
+<span class="fc" id="L456">        log.info(&quot;Invoice line edited | invoiceId={} | invoiceNumber={} | total={} &quot;</span>
+                        + &quot;| lines={} | performedBy={}&quot;,
+<span class="fc" id="L458">                saved.getInvoiceId(), saved.getInvoiceNumber(), saved.getTotal(),</span>
+<span class="fc" id="L459">                saved.getItems().size(), editor.getUsername());</span>
+
+<span class="fc" id="L461">        return InvoiceResponse.from(saved);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Cash payment (FR036, FR037, UC23)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Audited(action = &quot;PAYMENT_RECORD&quot;, module = &quot;INVOICE&quot;)
+    public InvoiceResponse recordPayment(Long id, RecordPaymentRequest request) {
+
+<span class="fc" id="L472">        User cashier = resolveAuthenticatedUser();</span>
+<span class="fc" id="L473">        Invoice invoice = findInvoiceByIdInternal(id);</span>
+
+<span class="fc bfc" id="L475" title="All 2 branches covered.">        if (invoice.getStatus() == InvoiceStatus.PAID) {</span>
+<span class="fc" id="L476">            log.warn(&quot;Payment rejected | invoiceId={} | invoiceNumber={} &quot;</span>
+                            + &quot;| reason=ALREADY_PAID | performedBy={}&quot;,
+<span class="fc" id="L478">                    invoice.getInvoiceId(), invoice.getInvoiceNumber(), cashier.getUsername());</span>
+<span class="fc" id="L479">            throw new BusinessRuleException(&quot;Invoice &quot; + invoice.getInvoiceNumber()</span>
+                    + &quot; is already paid&quot;);
+        }
+
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">        BigDecimal amount = request == null ? null : request.amount();</span>
+<span class="pc bpc" id="L484" title="1 of 4 branches missed.">        if (amount == null || amount.signum() &lt;= 0) {</span>
+<span class="fc" id="L485">            log.warn(&quot;Payment rejected | invoiceId={} | amount={} | reason=NON_POSITIVE &quot;</span>
+                            + &quot;| performedBy={}&quot;,
+<span class="fc" id="L487">                    invoice.getInvoiceId(), amount, cashier.getUsername());</span>
+<span class="fc" id="L488">            throw new BusinessRuleException(&quot;Payment amount must be greater than zero&quot;);</span>
+        }
+<span class="fc bfc" id="L490" title="All 2 branches covered.">        if (amount.scale() &gt; MONEY_SCALE) {</span>
+<span class="fc" id="L491">            log.warn(&quot;Payment rejected | invoiceId={} | amount={} | reason=TOO_MANY_DECIMALS &quot;</span>
+                            + &quot;| performedBy={}&quot;,
+<span class="fc" id="L493">                    invoice.getInvoiceId(), amount, cashier.getUsername());</span>
+<span class="fc" id="L494">            throw new BusinessRuleException(</span>
+                    &quot;Payment amount must have at most 2 decimal places&quot;);
+        }
+
+<span class="fc" id="L498">        BigDecimal outstanding = invoice.getOutstandingBalance();</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        if (amount.compareTo(outstanding) &gt; 0) {</span>
+<span class="fc" id="L500">            log.warn(&quot;Payment rejected | invoiceId={} | amount={} | outstanding={} &quot;</span>
+                            + &quot;| reason=OVERPAYMENT | performedBy={}&quot;,
+<span class="fc" id="L502">                    invoice.getInvoiceId(), amount, outstanding, cashier.getUsername());</span>
+<span class="fc" id="L503">            throw new BusinessRuleException(&quot;Payment amount &quot; + amount</span>
+                    + &quot; exceeds the outstanding balance of &quot; + outstanding);
+        }
+
+<span class="fc" id="L507">        Payment payment = new Payment();</span>
+<span class="fc" id="L508">        payment.setInvoice(invoice);</span>
+<span class="fc" id="L509">        payment.setAmount(money(amount));</span>
+<span class="fc" id="L510">        payment.setPaymentMethod(request.paymentMethod());</span>
+<span class="fc" id="L511">        payment.setRecordedBy(cashier);</span>
+<span class="fc" id="L512">        invoice.getPayments().add(payment);</span>
+
+<span class="fc" id="L514">        invoice.setAmountPaid(money(invoice.getAmountPaid().add(amount)));</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">        if (invoice.getAmountPaid().compareTo(invoice.getTotal()) &gt;= 0) {</span>
+<span class="fc" id="L516">            invoice.setStatus(InvoiceStatus.PAID);</span>
+        }
+
+        // Flushes the payment insert and the invoice update (version bump)
+        // together: a concurrent conflicting payment loses the optimistic lock
+        // here and rolls the whole transaction back - the invoice is never
+        // overpaid.
+<span class="fc" id="L523">        Invoice saved = invoiceRepository.saveAndFlush(invoice);</span>
+
+<span class="fc" id="L525">        log.info(&quot;Payment recorded | invoiceId={} | invoiceNumber={} | amount={} &quot;</span>
+                        + &quot;| amountPaid={} | outstanding={} | status={} | performedBy={}&quot;,
+<span class="fc" id="L527">                saved.getInvoiceId(), saved.getInvoiceNumber(), payment.getAmount(),</span>
+<span class="fc" id="L528">                saved.getAmountPaid(), saved.getOutstandingBalance(), saved.getStatus(),</span>
+<span class="fc" id="L529">                cashier.getUsername());</span>
+
+<span class="fc" id="L531">        return InvoiceResponse.from(saved);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Internals
+    // ------------------------------------------------------------------
+
+    /**
+     * Consultation charge + one line per dispensed in-house item.
+     * EXTERNAL_PURCHASE items are excluded (D4) and each unit price is copied
+     * from the catalog as a snapshot - it is never recalculated on view.
+     *
+     * While the prescription has not been collected yet (ISSUED) or never
+     * will be (CANCELLED), the invoice is consultation-only: the medicine is
+     * billed later on per-event dispense invoices, never twice (AC7).
+     */
+    private List&lt;InvoiceItem&gt; buildLines(Invoice invoice, Prescription prescription) {
+
+<span class="fc" id="L549">        List&lt;InvoiceItem&gt; lines = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L550">        lines.add(newLine(invoice, null, CONSULTATION_DESCRIPTION, 1,</span>
+<span class="fc" id="L551">                systemSettingService.getConsultationFee()));</span>
+
+<span class="fc bfc" id="L553" title="All 2 branches covered.">        if (prescription == null) {</span>
+<span class="fc" id="L554">            return lines; // consultation only: nothing was prescribed</span>
+        }
+
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        if (prescription.getStatus() != PrescriptionStatus.DISPENSED</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">                &amp;&amp; prescription.getStatus() != PrescriptionStatus.PARTIALLY_DISPENSED) {</span>
+<span class="fc" id="L559">            log.info(&quot;Consultation invoice without medicine lines | prescriptionId={} &quot;</span>
+                            + &quot;| status={} | reason=NOT_COLLECTED_YET&quot;,
+<span class="fc" id="L561">                    prescription.getPrescriptionId(), prescription.getStatus());</span>
+<span class="fc" id="L562">            return lines;</span>
+        }
+
+<span class="fc" id="L565">        DispensedTotals totals = dispensedTotals(prescription);</span>
+
+<span class="fc bfc" id="L567" title="All 2 branches covered.">        for (PrescriptionItem item : prescription.getItems()) {</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">            if (item.getItemType() != PrescriptionItemType.IN_HOUSE</span>
+<span class="pc bpc" id="L569" title="1 of 2 branches missed.">                    || item.getMedicine() == null) {</span>
+<span class="nc" id="L570">                continue;</span>
+            }
+
+<span class="fc" id="L573">            int billable = billableQuantity(item, totals);</span>
+<span class="fc bfc" id="L574" title="All 2 branches covered.">            if (billable &lt;= 0) {</span>
+<span class="fc" id="L575">                log.warn(&quot;Invoice line skipped | prescriptionId={} | itemId={} &quot;</span>
+                                + &quot;| reason=NOT_DISPENSED_OR_ALREADY_BILLED&quot;,
+<span class="fc" id="L577">                        prescription.getPrescriptionId(), item.getItemId());</span>
+<span class="fc" id="L578">                continue;</span>
+            }
+
+<span class="fc" id="L581">            lines.add(newLine(invoice, item.getMedicine(), item.getMedicine().getName(),</span>
+<span class="fc bfc" id="L582" title="All 2 branches covered.">                    billable, item.getUnitPrice() != null ? item.getUnitPrice() : item.getMedicine().getPrice()));</span>
+<span class="fc" id="L583">        }</span>
+
+<span class="fc" id="L585">        return lines;</span>
+    }
+
+    /**
+     * Per-item dispensed totals for one prescription, split into everything
+     * ever dispensed and the part already billed on standalone dispense
+     * invoices, so each unit is charged exactly once (AC7).
+     */
+<span class="fc" id="L593">    private record DispensedTotals(Map&lt;Long, Integer&gt; dispensed,</span>
+                                   Map&lt;Long, Integer&gt; alreadyInvoiced) {
+    }
+
+    /**
+     * Only dispensed quantities are billable (AC7): a per-item dispensing
+     * record wins (a partially dispensed prescription bills exactly what was
+     * handed out); without any per-item record the prescribed quantity was
+     * handed out whole. Units already billed on their own dispense invoice
+     * are subtracted so they are never charged twice.
+     */
+    private int billableQuantity(PrescriptionItem item, DispensedTotals totals) {
+
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">        int prescribed = item.getQuantity() == null ? 0 : item.getQuantity();</span>
+
+<span class="fc bfc" id="L608" title="All 4 branches covered.">        Integer dispensed = item.getUnitPrice() != null || item.getPrescription().getDispenseRevision() &gt; 0</span>
+<span class="fc" id="L609">                ? Integer.valueOf(item.getQuantityDispensed())</span>
+<span class="fc" id="L610">                : totals.dispensed().get(item.getItemId());</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">        int base = dispensed == null ? prescribed : Math.min(dispensed, prescribed);</span>
+
+<span class="fc" id="L613">        int alreadyInvoiced = totals.alreadyInvoiced().getOrDefault(item.getItemId(), 0);</span>
+<span class="fc" id="L614">        return Math.max(base - alreadyInvoiced, 0);</span>
+    }
+
+    private DispensedTotals dispensedTotals(Prescription prescription) {
+
+<span class="fc" id="L619">        Map&lt;Long, Integer&gt; dispensed = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L620">        Map&lt;Long, Integer&gt; alreadyInvoiced = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L622">        List&lt;ExternalDispensing&gt; events = externalDispensingRepository</span>
+<span class="fc" id="L623">                .findByPrescription_PrescriptionIdAndStatus(</span>
+<span class="fc" id="L624">                        prescription.getPrescriptionId(), Status.DISPENSED);</span>
+
+<span class="fc bfc" id="L626" title="All 2 branches covered.">        for (ExternalDispensing event : events) {</span>
+<span class="pc bpc" id="L627" title="1 of 2 branches missed.">            if (event.getItems().isEmpty()) {</span>
+<span class="nc" id="L628">                continue; // whole-prescription handover: prescribed quantities apply</span>
+            }
+
+<span class="fc" id="L631">            boolean invoiced = invoiceRepository.existsByDispenseDispenseId(event.getDispenseId());</span>
+<span class="fc bfc" id="L632" title="All 2 branches covered.">            for (DispensingItem handover : event.getItems()) {</span>
+<span class="pc bpc" id="L633" title="1 of 2 branches missed.">                if (handover.getPrescriptionItem() == null</span>
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">                        || handover.getQuantityDispensed() &lt;= 0) {</span>
+<span class="nc" id="L635">                    continue;</span>
+                }
+<span class="fc" id="L637">                Long itemId = handover.getPrescriptionItem().getItemId();</span>
+<span class="fc" id="L638">                dispensed.merge(itemId, handover.getQuantityDispensed(), Integer::sum);</span>
+
+<span class="fc bfc" id="L640" title="All 2 branches covered.">                if (invoiced) {</span>
+<span class="fc" id="L641">                    alreadyInvoiced.merge(itemId, handover.getQuantityDispensed(), Integer::sum);</span>
+<span class="fc" id="L642">                    log.info(&quot;Dispense event billed separately, excluded from consultation invoice &quot;</span>
+                                    + &quot;| dispenseId={} | itemId={}&quot;,
+<span class="fc" id="L644">                            event.getDispenseId(), itemId);</span>
+                }
+<span class="fc" id="L646">            }</span>
+<span class="fc" id="L647">        }</span>
+
+<span class="fc" id="L649">        return new DispensedTotals(dispensed, alreadyInvoiced);</span>
+    }
+
+    private InvoiceItem newLine(Invoice invoice, Medicine medicine, String description,
+                                int quantity, BigDecimal unitPrice) {
+
+<span class="fc" id="L655">        InvoiceItem line = new InvoiceItem();</span>
+<span class="fc" id="L656">        line.setInvoice(invoice);</span>
+<span class="fc" id="L657">        line.setMedicine(medicine);</span>
+<span class="fc" id="L658">        line.setDescription(description);</span>
+<span class="fc" id="L659">        line.setQuantity(quantity);</span>
+<span class="fc" id="L660">        line.setUnitPrice(money(unitPrice));</span>
+<span class="fc" id="L661">        line.setLineTotal(money(unitPrice.multiply(BigDecimal.valueOf(quantity))));</span>
+<span class="fc" id="L662">        return line;</span>
+    }
+
+    private BigDecimal sumOfLines(Invoice invoice) {
+<span class="fc" id="L666">        return money(invoice.getItems().stream()</span>
+<span class="fc" id="L667">                .map(InvoiceItem::getLineTotal)</span>
+<span class="fc" id="L668">                .reduce(BigDecimal.ZERO, BigDecimal::add));</span>
+    }
+
+    /**
+     * Writes the invoice with a unique placeholder number: the real number is
+     * derived from the generated id, so it can only be set after the row
+     * exists. A racing duplicate (unique appointment/dispense guard) surfaces
+     * here as a 409.
+     */
+    private Invoice persistInvoice(Invoice invoice, String conflictMessage) {
+        try {
+<span class="fc" id="L679">            invoice.setInvoiceNumber(temporaryInvoiceNumber());</span>
+<span class="fc" id="L680">            return invoiceRepository.saveAndFlush(invoice);</span>
+<span class="nc" id="L681">        } catch (DataIntegrityViolationException exception) {</span>
+<span class="nc" id="L682">            log.warn(&quot;Invoice generation rejected | source={} | reason=ALREADY_INVOICED&quot;,</span>
+<span class="nc bnc" id="L683" title="All 2 branches missed.">                    invoice.getAppointment() != null</span>
+<span class="nc" id="L684">                            ? &quot;appointment:&quot; + invoice.getAppointment().getAppointmentId()</span>
+<span class="nc" id="L685">                            : &quot;dispense:&quot; + invoice.getDispense().getDispenseId());</span>
+<span class="nc" id="L686">            throw new ConflictException(conflictMessage);</span>
+        }
+    }
+
+    /** Unique, system-generated: INV-&lt;year&gt;-&lt;invoice id padded to 6 digits&gt;. */
+    private String invoiceNumber(Long invoiceId) {
+<span class="fc" id="L692">        return String.format(&quot;INV-%d-%06d&quot;, Year.now().getValue(), invoiceId);</span>
+    }
+
+    /** Unique placeholder that satisfies the unique index until the id exists. */
+    private String temporaryInvoiceNumber() {
+<span class="fc" id="L697">        return &quot;TMP-&quot; + UUID.randomUUID();</span>
+    }
+
+    /** All money is stored and compared with 2-decimal HALF_UP precision. */
+    private BigDecimal money(BigDecimal value) {
+<span class="fc" id="L702">        return value.setScale(MONEY_SCALE, MONEY_ROUNDING);</span>
+    }
+
+    private InvoiceStatus parseStatus(String status) {
+<span class="pc bpc" id="L706" title="1 of 4 branches missed.">        if (status == null || status.isBlank()) {</span>
+<span class="fc" id="L707">            return null;</span>
+        }
+        try {
+<span class="fc" id="L710">            return InvoiceStatus.valueOf(status.trim().toUpperCase());</span>
+<span class="fc" id="L711">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L712">            throw new BusinessRuleException(&quot;Invalid status filter: '&quot; + status</span>
+                    + &quot;'. Allowed values: UNPAID, PAID&quot;);
+        }
+    }
+
+    private Invoice findInvoiceByIdInternal(Long id) {
+<span class="fc" id="L718">        return invoiceRepository.findById(id)</span>
+<span class="fc" id="L719">                .orElseThrow(() -&gt; new ResourceNotFoundException(</span>
+                        &quot;Invoice not found with id: &quot; + id));
+    }
+
+    /** The caller is always an authenticated Admin/Super Admin (SDS Table 9). */
+    private User resolveAuthenticatedUser() {
+<span class="fc" id="L725">        Long userId = SecurityUtil.getCurrentUserId().orElse(null);</span>
+
+<span class="fc bfc" id="L727" title="All 2 branches covered.">        Optional&lt;User&gt; user = userId != null</span>
+<span class="fc" id="L728">                ? userRepository.findById(userId)</span>
+<span class="fc" id="L729">                : SecurityUtil.getCurrentUsername().flatMap(userRepository::findByUsername);</span>
+
+<span class="pc" id="L731">        return user.orElseThrow(() -&gt; new BusinessRuleException(</span>
+                &quot;Authenticated user could not be resolved to a system user&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DispensingRules.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">DispensingRules.java</span></div><h1>DispensingRules.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.entity.Medicine;
+import java.time.LocalDate;
+
+/** Shared, side-effect-free dispensing rules. */
+public final class DispensingRules {
+    private DispensingRules() { }
+
+    public static int quantityToDispense(int requested, int available) {
+<span class="fc" id="L11">        return Math.min(Math.max(0, requested), Math.max(0, available));</span>
+    }
+
+    public static String unavailableReason(Medicine medicine) {
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        if (medicine == null) return &quot;Medicine is required for in-clinic dispensing&quot;;</span>
+<span class="fc bfc" id="L16" title="All 2 branches covered.">        if (Boolean.TRUE.equals(medicine.getIsQuarantined())) {</span>
+<span class="fc" id="L17">            return &quot;Medicine is quarantined with id: &quot; + medicine.getMedicineId();</span>
+        }
+<span class="pc bpc" id="L19" title="1 of 4 branches missed.">        if (medicine.getExpiryDate() != null &amp;&amp; medicine.getExpiryDate().isBefore(LocalDate.now())) {</span>
+<span class="fc" id="L20">            return &quot;Medicine is expired with id: &quot; + medicine.getMedicineId();</span>
+        }
+<span class="fc" id="L22">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

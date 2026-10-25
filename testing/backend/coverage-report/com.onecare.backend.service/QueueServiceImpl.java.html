@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueueServiceImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OneCare Backend</a> &gt; <a href="index.source.html" class="el_package">com.onecare.backend.service</a> &gt; <span class="el_source">QueueServiceImpl.java</span></div><h1>QueueServiceImpl.java</h1><pre class="source lang-java linenums">package com.onecare.backend.service;
+
+import com.onecare.backend.audit.Audited;
+import com.onecare.backend.dto.request.AppointmentStatusRequest;
+import com.onecare.backend.dto.request.GenerateInvoiceRequest;
+import com.onecare.backend.dto.response.AppointmentResponse;
+import com.onecare.backend.dto.response.QueueResponse;
+import com.onecare.backend.entity.Appointment;
+import com.onecare.backend.entity.User;
+import com.onecare.backend.enums.AppointmentStatus;
+import com.onecare.backend.enums.Role;
+import com.onecare.backend.exception.InvalidAppointmentStatusException;
+import com.onecare.backend.exception.ResourceNotFoundException;
+import com.onecare.backend.repository.AppointmentRepository;
+import com.onecare.backend.repository.InvoiceRepository;
+import com.onecare.backend.repository.PatientRepository;
+import com.onecare.backend.repository.UserRepository;
+import com.onecare.backend.security.SecurityUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+@Service
+@Transactional
+public class QueueServiceImpl implements QueueService {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(QueueServiceImpl.class);</span>
+
+    private final AppointmentRepository appointmentRepository;
+    private final UserRepository userRepository;
+    private final InvoiceService invoiceService;
+    private final InvoiceRepository invoiceRepository;
+
+    public QueueServiceImpl(
+            AppointmentRepository appointmentRepository,
+            PatientRepository patientRepository, UserRepository userRepository,
+            InvoiceService invoiceService,
+<span class="fc" id="L45">            InvoiceRepository invoiceRepository) {</span>
+<span class="fc" id="L46">        this.appointmentRepository = appointmentRepository;</span>
+<span class="fc" id="L47">        this.userRepository = userRepository;</span>
+<span class="fc" id="L48">        this.invoiceService = invoiceService;</span>
+<span class="fc" id="L49">        this.invoiceRepository = invoiceRepository;</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    @Transactional(readOnly = true)
+    public List&lt;QueueResponse&gt; getQueueToday() {
+<span class="fc" id="L55">        User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc" id="L56">        Role currentRole = currentUser.getRole();</span>
+<span class="fc" id="L57">        LocalDate today = LocalDate.now();</span>
+
+<span class="fc" id="L59">        List&lt;Appointment&gt; appointments = appointmentRepository</span>
+<span class="fc" id="L60">                .findByAppointmentDateOrderByTimeSlotAscAppointmentIdAsc(today).stream()</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                .filter(appointment -&gt; appointment.getStatus() != null</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                        &amp;&amp; appointment.getStatus() != AppointmentStatus.CANCELLED</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                        &amp;&amp; appointment.getStatus() != AppointmentStatus.NO_SHOW)</span>
+<span class="fc" id="L64">                .filter(appointment -&gt; {</span>
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">                    if (currentRole == Role.SUPER_ADMIN || currentRole == Role.ADMIN) {</span>
+<span class="nc" id="L66">                        return true;</span>
+                    }
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                    if (currentRole == Role.DOCTOR) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                        return appointment.getDoctor() != null</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                                &amp;&amp; appointment.getDoctor().getUserId().equals(currentUser.getUserId());</span>
+                    }
+                    // TODO(patient-login): Patient visibility validation cannot be tested until
+                    // patient login functionality is implemented. There is no patient role or
+                    // patient credential yet, so a real caller can never resolve to a patient
+                    // profile through resolveSelfPatient() and this check is unreachable in an
+                    // automated test. The lines below are commented out for now and must be
+                    // restored (and covered by tests) once patient login is available.
+                    //
+                    // Patient selfPatient = resolveSelfPatient(currentUser);
+                    // return appointment.getPatient() != null
+                    //         &amp;&amp; appointment.getPatient().getPatientId().equals(selfPatient.getPatientId());
+                    
+<span class="nc" id="L83">                    return false;</span>
+                })
+<span class="fc" id="L85">                .sorted(Comparator.comparing(Appointment::getTimeSlot).thenComparing(Appointment::getAppointmentId))</span>
+<span class="fc" id="L86">                .toList();</span>
+
+<span class="fc" id="L88">        List&lt;QueueResponse&gt; queue = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        for (int index = 0; index &lt; appointments.size(); index++) {</span>
+<span class="fc" id="L90">            Appointment appointment = appointments.get(index);</span>
+<span class="fc" id="L91">            queue.add(new QueueResponse(</span>
+<span class="fc" id="L92">                    appointment.getAppointmentId(),</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                    appointment.getPatient() != null ? appointment.getPatient().getPatientId() : null,</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                    appointment.getPatient() != null ? appointment.getPatient().getFullName() : null,</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                    appointment.getDoctor() != null ? appointment.getDoctor().getUserId() : null,</span>
+<span class="fc" id="L96">                    appointment.getAppointmentDate(),</span>
+<span class="fc" id="L97">                    appointment.getTimeSlot(),</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                    appointment.getStatus() != null ? appointment.getStatus().name() : null,</span>
+<span class="fc" id="L99">                    index + 1));</span>
+        }
+
+<span class="fc" id="L102">        return queue;</span>
+    }
+
+    @Override
+    @Audited(action = &quot;QUEUE_STATUS_UPDATE&quot;, module = &quot;QUEUE&quot;)
+    public AppointmentResponse updateQueueStatus(Long appointmentId, AppointmentStatusRequest request) {
+<span class="pc bpc" id="L108" title="2 of 4 branches missed.">        if (request == null || request.status() == null) {</span>
+<span class="nc" id="L109">            throw new InvalidAppointmentStatusException(&quot;Status is required&quot;);</span>
+        }
+
+<span class="fc" id="L112">        Appointment appointment = appointmentRepository.findById(appointmentId)</span>
+<span class="pc" id="L113">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Appointment not found with id: &quot; + appointmentId));</span>
+
+<span class="fc" id="L115">        AppointmentStatus currentStatus = appointment.getStatus();</span>
+<span class="fc" id="L116">        AppointmentStatus requestedStatus = request.status();</span>
+
+<span class="pc bpc" id="L118" title="3 of 4 branches missed.">        if (appointment.getStatus() == AppointmentStatus.CANCELLED &amp;&amp; requestedStatus != AppointmentStatus.CANCELLED) {</span>
+<span class="nc" id="L119">            throw new InvalidAppointmentStatusException(&quot;Cancelled appointments cannot be changed to another status&quot;);</span>
+        }
+
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">        if (currentStatus == AppointmentStatus.COMPLETED &amp;&amp; requestedStatus != AppointmentStatus.COMPLETED) {</span>
+<span class="fc" id="L123">            throw new InvalidAppointmentStatusException(&quot;Completed appointments cannot be changed to another status&quot;);</span>
+        }
+
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">        if (currentStatus == AppointmentStatus.NO_SHOW &amp;&amp; requestedStatus != AppointmentStatus.NO_SHOW) {</span>
+<span class="fc" id="L127">            throw new InvalidAppointmentStatusException(&quot;No-show appointments cannot be changed to another status&quot;);</span>
+        }
+
+        // AC1: Appointments that are already ARRIVED or COMPLETED must not be changed to NO_SHOW
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (requestedStatus == AppointmentStatus.NO_SHOW) {</span>
+<span class="pc bpc" id="L132" title="3 of 4 branches missed.">            if (currentStatus == AppointmentStatus.ARRIVED || currentStatus == AppointmentStatus.COMPLETED) {</span>
+<span class="fc" id="L133">                throw new InvalidAppointmentStatusException(</span>
+                        &quot;Appointments that are already ARRIVED or COMPLETED cannot be changed to NO_SHOW&quot;);
+            }
+        }
+
+        // AC1: Only the Doctor can mark the Appointment as COMPLETED after finishing the consultation.
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (requestedStatus == AppointmentStatus.COMPLETED) {</span>
+<span class="fc" id="L140">            User currentUser = getCurrentAuthenticatedUser();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (currentUser.getRole() != Role.DOCTOR) {</span>
+<span class="fc" id="L142">                throw new AccessDeniedException(&quot;Only doctors can mark an appointment as COMPLETED&quot;);</span>
+            }
+<span class="pc bpc" id="L144" title="1 of 4 branches missed.">            if (appointment.getDoctor() != null &amp;&amp; !appointment.getDoctor().getUserId().equals(currentUser.getUserId())) {</span>
+<span class="fc" id="L145">                throw new AccessDeniedException(&quot;Doctors can only complete their own assigned appointments&quot;);</span>
+            }
+        }
+
+        // AC1: Admin check-in: marking as ARRIVED is only valid from SCHEDULED
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">        if (requestedStatus == AppointmentStatus.ARRIVED &amp;&amp; currentStatus != AppointmentStatus.SCHEDULED) {</span>
+<span class="nc" id="L151">            throw new InvalidAppointmentStatusException(&quot;Only scheduled appointments can be marked as ARRIVED&quot;);</span>
+        }
+
+<span class="fc" id="L154">        appointment.setStatus(requestedStatus);</span>
+<span class="fc" id="L155">        Appointment saved = appointmentRepository.save(appointment);</span>
+<span class="fc" id="L156">        log.info(&quot;Updated appointment {} status to {}&quot;, saved.getAppointmentId(), requestedStatus);</span>
+
+        // AC3: Automatically create invoice when appointment is marked COMPLETED
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (requestedStatus == AppointmentStatus.COMPLETED) {</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">            if (invoiceRepository != null &amp;&amp; !invoiceRepository.existsByAppointmentAppointmentId(saved.getAppointmentId())) {</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                if (invoiceService != null) {</span>
+                    try {
+<span class="fc" id="L163">                        invoiceService.generateInvoice(new GenerateInvoiceRequest(saved.getAppointmentId(), null));</span>
+<span class="fc" id="L164">                        log.info(&quot;Automatically generated invoice for completed appointment {}&quot;, saved.getAppointmentId());</span>
+<span class="nc" id="L165">                    } catch (Exception ex) {</span>
+<span class="nc" id="L166">                        log.error(&quot;Failed to auto-generate invoice for completed appointment {}: {}&quot;,</span>
+<span class="nc" id="L167">                                saved.getAppointmentId(), ex.getMessage(), ex);</span>
+<span class="nc" id="L168">                        throw ex;</span>
+<span class="fc" id="L169">                    }</span>
+                }
+            }
+        }
+
+<span class="fc" id="L174">        return AppointmentResponse.from(saved);</span>
+    }
+
+    private User getCurrentAuthenticatedUser() {
+<span class="fc" id="L178">        Long currentUserId = SecurityUtil.getCurrentUserId()</span>
+<span class="pc" id="L179">                .orElseThrow(() -&gt; new AccessDeniedException(&quot;Authentication required&quot;));</span>
+
+<span class="fc" id="L181">        return userRepository.findById(currentUserId)</span>
+<span class="pc" id="L182">                .orElseThrow(() -&gt; new AccessDeniedException(&quot;Authenticated user not found&quot;));</span>
+    }
+
+    // private Patient resolveSelfPatient(User currentUser) {
+    //     return patientRepository.findAll().stream()
+    //             .filter(patient -&gt; patient.getEmail() != null
+    //                     &amp;&amp; currentUser.getEmail() != null
+    //                     &amp;&amp; patient.getEmail().equalsIgnoreCase(currentUser.getEmail()))
+    //             .findFirst()
+    //             .orElseThrow(() -&gt; new AccessDeniedException(&quot;No trusted patient profile found for the current user&quot;));
+    // }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
